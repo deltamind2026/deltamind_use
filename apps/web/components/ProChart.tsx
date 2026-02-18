@@ -146,7 +146,7 @@ export default function ProChart({
 
       /* MACD */
       const m=macd(closes,12,26,9);
-      macdLine.setData(mapLine(m.macd,bars));
+      macdLine.setData(mapLine(m.line,bars));
       signalLine.setData(mapLine(m.signal,bars));
       hist.setData(m.hist.map((v,i)=>({time:bars[i].t,value:v})));
 

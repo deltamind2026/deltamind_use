@@ -17,7 +17,7 @@ from adapters.polygon import fetch_ohlc as polygon_ohlc
 
 # ---------------- Intelligence ----------------
 from metrics.market_state import build_market_state
-from metrics.multi import combine_timeframes
+from metrics.multi_timeframe import combine_timeframes
 
 
 # ---------------------------------------------------
