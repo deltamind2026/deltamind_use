@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 
 # Trade Planning Engine
-from trade_planner import build_trade_decision
+from decision_engine import build_trade_decision
 
 
 # =========================================================

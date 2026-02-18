@@ -1,9 +1,11 @@
 # services/ai-orchestrator/openai_client.py
 
 import os
+from dotenv import dotenv_values
 from openai import OpenAI
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+config = dotenv_values(".env")
+client = OpenAI(api_key=config.get("OPENAI_API_KEY"))
 
 # =========================================================
 # SYSTEM PROMPTS
