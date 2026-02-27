@@ -65,7 +65,9 @@ async def safe_polygon(symbol: str, tf: str, limit: int) -> Tuple[List[Dict], st
         raw = await polygon_ohlc(symbol, tf=tf, limit=limit)
         return raw, "polygon"
     except Exception as e:
-        return mock_ohlc(symbol, tf=tf, limit=limit), f"mock_fallback({str(e)[:40]})"
+        #return mock_ohlc(symbol, tf=tf, limit=limit)
+        mock_payload = mock_ohlc(symbol, tf=tf, limit=limit)
+        return mock_payload.get("points", []), f"mock_polygon_error({str(e)[:40]})"
 
 
 def safe_market_state(candles: List[Dict]) -> Dict:

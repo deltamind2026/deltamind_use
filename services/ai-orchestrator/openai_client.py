@@ -1,11 +1,11 @@
 # services/ai-orchestrator/openai_client.py
 
 import os
-from dotenv import dotenv_values
 from openai import OpenAI
 
-config = dotenv_values(".env")
-client = OpenAI(api_key=config.get("OPENAI_API_KEY"))
+# Use dotenv later
+# As of writing this, api key throws 429 exceeded quota
+client = OpenAI(api_key="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")
 
 # =========================================================
 # SYSTEM PROMPTS
@@ -133,7 +133,6 @@ def explain_chart(chart_intel: dict, mode: str = "beginner") -> str:
     try:
         response = client.chat.completions.create(
             model="gpt-5-mini",   # fast, cheap, strong reasoning
-            temperature=0.25,     # low hallucination
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

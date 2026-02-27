@@ -8,13 +8,13 @@ def mock_ohlc(symbol:str, tf:str="1D", limit:int=220):
     points = []
     price = 500 + random.random()*40
     for i in range(limit):
-        ts = now - timedelta(minutes=step*(limit-i))
+        t = now - timedelta(minutes=step*(limit-i))
         o = price
         c = max(1, o + random.uniform(-5, 5))
         h = max(o, c) + random.uniform(0, 2)
         l = min(o, c) - random.uniform(0, 2)
         v = random.randint(100000, 900000)
-        points.append({"ts": ts.isoformat()+"Z", "o": round(o,2), "h": round(h,2), "l": round(l,2), "c": round(c,2), "v": v})
+        points.append({"t": t.isoformat()+"Z", "o": round(o,2), "h": round(h,2), "l": round(l,2), "c": round(c,2), "v": v})
         price = c
     return {"symbol": symbol.upper(), "tf": tf, "points": points}
 

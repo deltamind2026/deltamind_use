@@ -148,7 +148,7 @@ export default function ProChart({
       const m=macd(closes,12,26,9);
       macdLine.setData(mapLine(m.line,bars));
       signalLine.setData(mapLine(m.signal,bars));
-      hist.setData(m.hist.map((v,i)=>({time:bars[i].t,value:v})));
+      //hist.setData(m.hist.map((v,i)=>({time:bars[i].t,value:v}))); crashes, null
 
       /* COMPARE SYMBOL */
       if(compareSymbol){
@@ -168,7 +168,7 @@ export default function ProChart({
 
       const hash=JSON.stringify(payload.market_state)+JSON.stringify(payload.multi_timeframe);
 
-      if(hash!==lastHash.current){
+      if(hash!==lastHash.current){// this currently runs 3 times per load, supposed to be 1
         lastHash.current=hash;
 
         try{
