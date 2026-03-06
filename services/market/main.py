@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import asyncio
 from typing import Dict, List, Tuple
+from cache import get_cached_data, set_cached_data
+
 
 load_dotenv()
 
@@ -95,23 +97,31 @@ def health():
 
 @app.get("/market/ohlc")
 async def ohlc(symbol: str, tf: str = "1d", limit: int = 220):
-
+    cached = get_cached_data(symbol, tf)
+    if cached:
+        cached['cache_hit'] = True
+        return JSONResponse(cached, headers={"Cache-Control": "public, max-age=900"})
+    
     tf = tf.lower()
     if tf not in VALID_TF:
         raise HTTPException(status_code=400, detail=f"Invalid timeframe {tf}")
-
+    
     raw, provider = await safe_polygon(symbol, tf, limit)
     candles = normalize_candles(raw)
     market_state = safe_market_state(candles)
-
-    return JSONResponse({
+    
+    response_data = {
         "symbol": symbol.upper(),
         "timeframe": tf,
         "provider": provider,
         "candles": candles,
-        "market_state": market_state
-    }, headers={"Cache-Control": "no-store"})
-
+        "market_state": market_state,
+        "cache_hit": False
+    }
+    
+    set_cached_data(symbol, tf, response_data)
+    
+    return JSONResponse(response_data, headers={"Cache-Control": "public, max-age=900"})
 
 # ---------------------------------------------------
 # Multi-Timeframe Intelligence
