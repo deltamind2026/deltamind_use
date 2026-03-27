@@ -103,14 +103,16 @@ export default function ProChart({
 
     (async()=>{
 
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8040';
+
       /* PRICE DATA */
-      const ohlc=await fetch(`http://localhost:8040/market/ohlc?symbol=${symbol}&tf=${tf}`).then(r=>r.json());
+      const ohlc=await fetch(`${API_URL}/market/ohlc?symbol=${symbol}&tf=${tf}`).then(r=>r.json());
 
       /* MULTI TIMEFRAME */
-      const multi=await fetch(`http://localhost:8040/market/multi?symbol=${symbol}`).then(r=>r.json());
+      const multi=await fetch(`${API_URL}/market/multi?symbol=${symbol}`).then(r=>r.json());
 
       /* OPTIONS */
-      const options=await fetch(`http://localhost:8040/options/chain?symbol=${symbol}`).then(r=>r.json());
+      const options=await fetch(`${API_URL}/options/chain?symbol=${symbol}`).then(r=>r.json());
 
       /* MAP CANDLES */
       const bars:OHLCV[]=ohlc.candles.map((c:any)=>({
@@ -153,7 +155,7 @@ export default function ProChart({
 
       /* COMPARE SYMBOL */
       if(compareSymbol){
-        const cmp=await fetch(`http://localhost:8040/market/ohlc?symbol=${compareSymbol}&tf=${tf}`).then(r=>r.json());
+        const cmp=await fetch(`${API_URL}/market/ohlc?symbol=${compareSymbol}&tf=${tf}`).then(r=>r.json());
         compare.setData(cmp.candles.map((c:any)=>({time:Math.floor(new Date(c.time).getTime()/1000) as UTCTimestamp,value:c.close})));
       }
 
@@ -173,7 +175,7 @@ export default function ProChart({
         lastHash.current=hash;
 
         try{
-          const ai=await fetch("http://localhost:8040/ai/explain",{
+          const ai=await fetch(`${API_URL}/ai/explain`,{
             method:"POST",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify(payload)
