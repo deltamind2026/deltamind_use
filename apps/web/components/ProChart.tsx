@@ -1,16 +1,17 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, LineStyle, CrosshairMode } from 'lightweight-charts';
-import type { OHLCV } from '@/lib/ta/series';
-import { bollinger, macd, rsi, sma, vwap, ema } from '@/lib/ta/series';
-import type { IndicatorSettings } from '@/lib/ta/settings';
-import DrawingOverlay from '@/components/DrawingOverlay';
-import HoverAI from '@/components/HoverAI';
+import { createChart, LineStyle, CrosshairMode, UTCTimestamp } from 'lightweight-charts';
+import type { OHLCV } from '../lib/ta/series';
+import { bollinger, macd, rsi, sma, vwap, ema } from '../lib/ta/series';
+import type { IndicatorSettings } from '../lib/ta/settings';
+import DrawingOverlay from './DrawingOverlay';
+import HoverAI from './HoverAI';
 
 /* ---------------- helpers ---------------- */
 
 function mapLine(data:number[], bars:OHLCV[]){
-  return data.map((v,i)=>v?{time:bars[i].t,value:v}:null).filter(Boolean) as any;
+  if (!data || !bars) return [];
+  return data.map((v,i)=>v?{time:bars[i].t as UTCTimestamp,value:v}:null).filter(Boolean) as any;
 }
 
 /* ------------------------------------------------ */
@@ -125,8 +126,8 @@ export default function ProChart({
       const closes=bars.map(b=>b.c);
 
       /* DRAW PRICE */
-      candles.setData(bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));
-      volume.setData(bars.map(b=>({time:b.t,value:b.v,color:b.c>b.o?'#22c55e':'#ef4444'})));
+      candles.setData(bars.map(b=>({time:b.t as UTCTimestamp,open:b.o,high:b.h,low:b.l,close:b.c})));
+      volume.setData(bars.map(b=>({time:b.t as UTCTimestamp,value:b.v,color:b.c>b.o?'#22c55e':'#ef4444'})));
 
       /* INDICATORS */
       smaLine.setData(mapLine(sma(closes,settings.params.SMA.period),bars));
@@ -148,12 +149,12 @@ export default function ProChart({
       const m=macd(closes,12,26,9);
       macdLine.setData(mapLine(m.line,bars));
       signalLine.setData(mapLine(m.signal,bars));
-      //hist.setData(m.hist.map((v,i)=>({time:bars[i].t,value:v}))); crashes, null
+      hist.setData(m.hist.map((v,i)=>v!==null?{time:bars[i].t as UTCTimestamp,value:v}:null).filter(Boolean));
 
       /* COMPARE SYMBOL */
       if(compareSymbol){
         const cmp=await fetch(`http://localhost:8040/market/ohlc?symbol=${compareSymbol}&tf=${tf}`).then(r=>r.json());
-        compare.setData(cmp.candles.map((c:any)=>({time:Math.floor(new Date(c.time).getTime()/1000),value:c.close})));
+        compare.setData(cmp.candles.map((c:any)=>({time:Math.floor(new Date(c.time).getTime()/1000) as UTCTimestamp,value:c.close})));
       }
 
       /* AI EXPLANATION */
@@ -168,11 +169,11 @@ export default function ProChart({
 
       const hash=JSON.stringify(payload.market_state)+JSON.stringify(payload.multi_timeframe);
 
-      if(hash!==lastHash.current){// this currently runs 3 times per load, supposed to be 1
+      if(hash!==lastHash.current){
         lastHash.current=hash;
 
         try{
-          const ai=await fetch("http://localhost:8002/ai/explain",{
+          const ai=await fetch("http://localhost:8040/ai/explain",{
             method:"POST",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify(payload)
@@ -197,12 +198,21 @@ export default function ProChart({
   /* ---------------- UI ---------------- */
 
   return(
-    <div style={{position:'relative'}}>
-      <div ref={priceRef}/>
+    <div>
+      {/* Price chart with drawing overlay */}
+      <div style={{position:'relative'}}>
+        <div ref={priceRef}/>
+        <DrawingOverlay width={800} height={520}/>
+      </div>
+
+      {/* RSI and MACD panels */}
       <div ref={rsiRef}/>
       <div ref={macdRef}/>
+      
+      {/* Hover AI tooltip */}
       <HoverAI/>
 
+      {/* AI Insight panel */}
       <div style={{
         marginTop:10,
         background:"#020617",
@@ -214,9 +224,6 @@ export default function ProChart({
         <b style={{color:"#22d3ee"}}>DeltaMind Insight</b>
         <div style={{marginTop:6,whiteSpace:"pre-wrap"}}>{aiText}</div>
       </div>
-
-      <DrawingOverlay width={800} height={520}/>
     </div>
   );
 }
-
