@@ -5,7 +5,7 @@ from openai import OpenAI
 
 # Use dotenv later
 # As of writing this, api key throws 429 exceeded quota
-client = OpenAI(api_key="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")
+client = OpenAI(api_key="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")
 
 # =========================================================
 # SYSTEM PROMPTS

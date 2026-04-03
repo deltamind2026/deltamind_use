@@ -3,6 +3,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import httpx
 from dotenv import load_dotenv
 import asyncio
 from typing import Dict, List, Tuple
@@ -206,4 +207,30 @@ async def options_chain(symbol: str, provider: str = "tradier"):
         "rows": rows,
         "warning": data.get("warning"),
     }
+
+@app.post("/ai/explain")
+async def ai_explain_endpoint(request: dict):
+    import os
+    import httpx
+    
+    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
+    
+    if not ai_url:
+        raise HTTPException(
+            status_code=500,
+            detail="AI_ORCHESTRATOR_URL not configured"
+        )
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{ai_url}/ai/explain",
+                json=request
+            )
+            return response.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI service error: {str(e)}"
+        )
 
