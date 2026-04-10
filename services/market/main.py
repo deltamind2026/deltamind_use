@@ -233,4 +233,30 @@ async def ai_explain_endpoint(request: dict):
             status_code=500,
             detail=f"AI service error: {str(e)}"
         )
+    
+@app.post("/ai/analyze-period")
+async def ai_analyze_period(request: dict):
+    import os
+    import httpx
+    
+    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
+    
+    if not ai_url:
+        raise HTTPException(
+            status_code=500,
+            detail="AI_ORCHESTRATOR_URL not configured"
+        )
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{ai_url}/ai/analyze-period",
+                json=request
+            )
+            return response.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI service error: {str(e)}"
+        )
 

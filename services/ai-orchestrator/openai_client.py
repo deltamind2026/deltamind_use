@@ -118,6 +118,17 @@ Explain only the provided data.
 # MAIN EXPLANATION FUNCTION
 # =========================================================
 
+def get_completion(prompt: str, model: str = "gpt-4o-mini") -> str:
+    """
+    Send a raw prompt and return the completion text.
+    """
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
+
+
 def explain_chart(chart_intel: dict, mode: str = "beginner") -> str:
     """
     Generate explanation for chart intelligence
@@ -132,7 +143,7 @@ def explain_chart(chart_intel: dict, mode: str = "beginner") -> str:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-5-mini",   # fast, cheap, strong reasoning
+            model="gpt-4o-mini",   # fast, cheap, strong reasoning
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

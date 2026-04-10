@@ -1,26 +1,30 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-type Tool = 'none'|'trendline'|'fib';
+type Tool = 'none'|'trendline'|'fib'|'timewindow';
 type Pt = { x:number; y:number };
 type Trend = { a:Pt; b:Pt };
 type Fib = { hi:Pt; lo:Pt };
+type TimeWindow = { start:Pt; end:Pt };
 
 export default function DrawingOverlay({ 
   width, 
   height,
   currentPrice,
-  onDrawingComplete 
+  onDrawingComplete,
+  onTimeWindowComplete
 }: { 
   width:number; 
   height:number;
   currentPrice?: number;
   onDrawingComplete?: (analysis: string) => void;
+  onTimeWindowComplete?: (startX: number, endX: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tool, setTool] = useState<Tool>('none');
   const [trendlines, setTrendlines] = useState<Trend[]>([]);
   const [fibs, setFibs] = useState<Fib[]>([]);
+  const [timeWindows, setTimeWindows] = useState<TimeWindow[]>([]);
   const [dragStart, setDragStart] = useState<Pt|null>(null);
   const [dragNow, setDragNow] = useState<Pt|null>(null);
 
@@ -34,6 +38,7 @@ export default function DrawingOverlay({
         const data = JSON.parse(saved);
         if (data.trendlines) setTrendlines(data.trendlines);
         if (data.fibs) setFibs(data.fibs);
+        if (data.timeWindows) setTimeWindows(data.timeWindows);
       } catch (e) {
         console.error('Failed to load drawings:', e);
       }
@@ -42,8 +47,8 @@ export default function DrawingOverlay({
 
   // Save to localStorage whenever drawings change
   useEffect(() => {
-    localStorage.setItem('dm-drawings', JSON.stringify({ trendlines, fibs }));
-  }, [trendlines, fibs]);
+    localStorage.setItem('dm-drawings', JSON.stringify({ trendlines, fibs, timeWindows }));
+  }, [trendlines, fibs, timeWindows]);
 
   // Convert canvas Y coordinate to approximate price
   function yToPrice(y: number, currentPrice: number): number {
@@ -214,31 +219,67 @@ export default function DrawingOverlay({
       }
     }
 
+    // Time Windows
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    for (const tw of timeWindows) {
+      const left = Math.min(tw.start.x, tw.end.x);
+      const right = Math.max(tw.start.x, tw.end.x);
+      ctx.fillRect(left, 0, right - left, height);
+      ctx.strokeRect(left, 0, right - left, height);
+
+      // Draw label at top
+      ctx.fillStyle = '#22d3ee';
+      ctx.font = 'bold 13px ui-sans-serif';
+      ctx.fillText('📅 Time Window', left + 8, 20);
+    }
+
     // In-progress drag preview
     if (tool !== 'none' && dragStart && dragNow){
       ctx.setLineDash([6,6]);
-      ctx.strokeStyle = '#f59e0b';
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(dragStart.x, dragStart.y);
-      ctx.lineTo(dragNow.x, dragNow.y);
-      ctx.stroke();
+
+      if (tool === 'timewindow') {
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.2)';
+        ctx.strokeStyle = '#22d3ee';
+        const left = Math.min(dragStart.x, dragNow.x);
+        const right = Math.max(dragStart.x, dragNow.x);
+        ctx.fillRect(left, 0, right - left, height);
+        ctx.strokeRect(left, 0, right - left, height);
+      } else {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.moveTo(dragStart.x, dragStart.y);
+        ctx.lineTo(dragNow.x, dragNow.y);
+        ctx.stroke();
+      }
+
       ctx.setLineDash([]);
     }
   }
 
-  useEffect(()=>{ redraw(); }, [trendlines, fibs, dragStart, dragNow, tool, width, height]);
+  useEffect(()=>{ redraw(); }, [trendlines, fibs, timeWindows, dragStart, dragNow, tool, width, height]);
+
+  function getCanvasPoint(e: React.MouseEvent<HTMLCanvasElement>): Pt {
+    const canvas = e.target as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }
 
   function onDown(e:React.MouseEvent<HTMLCanvasElement>) {
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-    const p = { x: e.clientX-rect.left, y: e.clientY-rect.top };
+    const p = getCanvasPoint(e);
     setDragStart(p);
     setDragNow(p);
   }
   function onMove(e:React.MouseEvent<HTMLCanvasElement>) {
     if (!dragStart) return;
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-    setDragNow({ x: e.clientX-rect.left, y: e.clientY-rect.top });
+    setDragNow(getCanvasPoint(e));
   }
   function onUp() {
     if (!dragStart || !dragNow) { setDragStart(null); setDragNow(null); return; }
@@ -263,6 +304,17 @@ export default function DrawingOverlay({
       }
     }
     
+    if (tool === 'timewindow') {
+      const newWindow = { start: dragStart, end: dragNow };
+      setTimeWindows(prev => [...prev, newWindow]);
+
+      if (onTimeWindowComplete) {
+        const startX = Math.min(dragStart.x, dragNow.x);
+        const endX = Math.max(dragStart.x, dragNow.x);
+        onTimeWindowComplete(startX, endX);
+      }
+    }
+
     setDragStart(null);
     setDragNow(null);
   }
@@ -273,7 +325,8 @@ export default function DrawingOverlay({
         <button onClick={()=>setTool('none')} style={btn(tool==='none')}>Cursor</button>
         <button onClick={()=>setTool('trendline')} style={btn(tool==='trendline')}>Trendline</button>
         <button onClick={()=>setTool('fib')} style={btn(tool==='fib')}>Fib</button>
-        <button onClick={()=>{setTrendlines([]); setFibs([]);}} style={btn(false)}>Clear</button>
+        <button onClick={()=>setTool('timewindow')} style={btn(tool==='timewindow')}>Time Window</button>
+        <button onClick={()=>{setTrendlines([]); setFibs([]); setTimeWindows([]);}} style={btn(false)}>Clear</button>
       </div>
 
       <canvas

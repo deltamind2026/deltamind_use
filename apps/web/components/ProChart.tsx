@@ -28,13 +28,16 @@ export default function ProChart({
   const macdRef = useRef<HTMLDivElement>(null);
 
   const barsRef = useRef<OHLCV[]>([]);
+  const chartRef = useRef<any>(null);
   const marketStateRef = useRef<any>({});
   const multiStateRef = useRef<any>({});
   const optionsRef = useRef<any[]>([]);
 
   const [aiText,setAiText]=useState("Analyzing market...");
   const [drawingAnalysis, setDrawingAnalysis] = useState<string>("");
-  const [loading, setLoading] = useState(false);  // ADD THIS
+  const [loading, setLoading] = useState(false);
+  const [timeWindowAnalysis, setTimeWindowAnalysis] = useState<string>("");
+  const [analyzingWindow, setAnalyzingWindow] = useState(false);
   const lastHash = useRef<string>("");
 
   useEffect(()=>{
@@ -49,6 +52,7 @@ export default function ProChart({
       layout:{background:{color:'#020617'},textColor:'#e5e7eb'},
       grid:{vertLines:{color:'#0b1020'},horzLines:{color:'#0b1020'}}
     });
+    chartRef.current = chart;
 
     const candles=chart.addCandlestickSeries();
     const volume=chart.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:''});
@@ -203,6 +207,97 @@ export default function ProChart({
 
   },[symbol,tf,compareSymbol,settings]);
 
+  /* ---------------- TIME WINDOW ANALYSIS ---------------- */
+
+  async function handleTimeWindow(startX: number, endX: number) {
+    if (!barsRef.current.length) return;
+    
+    setAnalyzingWindow(true);
+    setTimeWindowAnalysis("Analyzing this time period...");
+    
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8040';
+    const bars = barsRef.current;
+    
+    // Convert canvas-internal coords (0–800) → CSS pixels → timestamps via LightweightCharts
+    const containerWidth = priceRef.current?.getBoundingClientRect().width || 800;
+    const scaleBack = containerWidth / 800;
+    const timeScale = chartRef.current?.timeScale();
+
+    let startIdx: number;
+    let endIdx: number;
+
+    if (timeScale) {
+      const startTime = timeScale.coordinateToTime(Math.min(startX, endX) * scaleBack);
+      const endTime = timeScale.coordinateToTime(Math.max(startX, endX) * scaleBack);
+      startIdx = startTime ? Math.max(0, bars.findIndex(b => b.t >= startTime)) : 0;
+      endIdx = endTime
+        ? Math.min(bars.length - 1, bars.findIndex(b => b.t >= endTime))
+        : bars.length - 1;
+      if (endIdx < 0) endIdx = bars.length - 1;
+    } else {
+      // Fallback: proportion of bar array
+      const startRatio = Math.min(startX, endX) / 800;
+      const endRatio = Math.max(startX, endX) / 800;
+      startIdx = Math.max(0, Math.floor(startRatio * bars.length));
+      endIdx = Math.min(bars.length - 1, Math.floor(endRatio * bars.length));
+    }
+    
+    if (startIdx >= endIdx) {
+      setTimeWindowAnalysis("Time window too small. Please drag across multiple days.");
+      setAnalyzingWindow(false);
+      return;
+    }
+    
+    const windowCandles = bars.slice(startIdx, endIdx + 1);
+    
+    if (windowCandles.length < 2) {
+      setTimeWindowAnalysis("Not enough data in this window. Try selecting a wider range.");
+      setAnalyzingWindow(false);
+      return;
+    }
+    
+    const startPrice = windowCandles[0].c;
+    const endPrice = windowCandles[windowCandles.length - 1].c;
+    const priceChange = ((endPrice - startPrice) / startPrice * 100);
+    
+    const startDate = new Date(windowCandles[0].t * 1000).toLocaleDateString();
+    const endDate = new Date(windowCandles[windowCandles.length - 1].t * 1000).toLocaleDateString();
+    
+    try {
+      const payload = {
+        symbol: symbol,
+        start_date: startDate,
+        end_date: endDate,
+        start_price: startPrice,
+        end_price: endPrice,
+        price_change_pct: priceChange,
+        candles: windowCandles.map(b => ({
+          time: new Date(b.t * 1000).toISOString(),
+          open: b.o,
+          high: b.h,
+          low: b.l,
+          close: b.c,
+          volume: b.v
+        })),
+        market_state: marketStateRef.current
+      };
+      
+      const response = await fetch(`${API_URL}/ai/analyze-period`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await response.json();
+      setTimeWindowAnalysis(data?.analysis || "Analysis unavailable");
+    } catch (err) {
+      console.error("Time window analysis error:", err);
+      setTimeWindowAnalysis("Unable to analyze this time period. Please try again.");
+    } finally {
+      setAnalyzingWindow(false);
+    }
+  }
+
   /* ---------------- UI ---------------- */
 
   return(
@@ -215,6 +310,7 @@ export default function ProChart({
           height={520}
           currentPrice={barsRef.current.length > 0 ? barsRef.current[barsRef.current.length - 1].c : undefined}
           onDrawingComplete={(analysis) => setDrawingAnalysis(analysis)}
+          onTimeWindowComplete={handleTimeWindow}
         />
       </div>
 
@@ -250,6 +346,22 @@ export default function ProChart({
         }}>
           <b style={{color:"#f59e0b"}}>📐 Drawing Analysis</b>
           <div style={{marginTop:6,whiteSpace:"pre-wrap",fontSize:14}}>{drawingAnalysis}</div>
+        </div>
+      )}
+
+      {/* Time Window Analysis panel */}
+      {timeWindowAnalysis && (
+        <div style={{
+          marginTop:10,
+          background:"#020617",
+          border:"1px solid #22d3ee",
+          padding:"12px",
+          borderRadius:12,
+          color:"#e5e7eb"
+        }}>
+          <b style={{color:"#22d3ee"}}>📅 Time Period Analysis</b>
+          {analyzingWindow && <div style={{marginTop:6, color:"#94a3b8"}}>Loading AI analysis...</div>}
+          <div style={{marginTop:6,whiteSpace:"pre-wrap",fontSize:14}}>{timeWindowAnalysis}</div>
         </div>
       )}
     </div>
