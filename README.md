@@ -37,4 +37,4 @@ Env
 
 Notes
 - Deribit is best for crypto options (BTC/ETH).
-- Tradier is best for US equity/index options (AAPL, NVDA, SPY).
+- Tradier is best for US equity/index options (AAPL, NVDA, SPY).  
