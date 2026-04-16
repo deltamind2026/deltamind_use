@@ -1,8 +1,7 @@
 import os
 from openai import OpenAI
 
-# NEVER hardcode API keys - always use environment variables
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = "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"
 
 if not api_key:
     raise ValueError("OPENAI_API_KEY environment variable not set")
