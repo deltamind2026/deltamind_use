@@ -1,163 +1,23 @@
-# services/ai-orchestrator/openai_client.py
-
 import os
 from openai import OpenAI
 
-# Use dotenv later
-# As of writing this, api key throws 429 exceeded quota
-client = OpenAI(api_key="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")
+# NEVER hardcode API keys - always use environment variables
+api_key = os.getenv("OPENAI_API_KEY")
 
-# =========================================================
-# SYSTEM PROMPTS
-# =========================================================
+if not api_key:
+    raise ValueError("OPENAI_API_KEY environment variable not set")
 
-BEGINNER_SYSTEM_PROMPT = """
-You are DeltaMind — a patient trading mentor.
+client = OpenAI(api_key=api_key)
 
-You teach beginners how markets behave.
-
-You DO NOT:
-- predict price
-- give financial advice
-- tell users to buy or sell
-
-You DO:
-- explain behavior
-- explain risk
-- explain trader psychology
-- explain what could change the situation
-
-Tone:
-Calm, simple, educational.
-Use analogies when helpful.
-Avoid jargon whenever possible.
-
-Always structure explanation:
-
-1) What the market is doing
-2) Why traders care
-3) What could change
-4) Risk awareness
-"""
-
-PRO_SYSTEM_PROMPT = """
-You are DeltaMind — a professional market behavior analyst.
-
-You analyze structured trading intelligence.
-
-You DO NOT:
-- predict price
-- generate signals
-- give financial advice
-
-You DO:
-- explain participation
-- describe positioning
-- describe risk
-- describe invalidation conditions
-
-Tone:
-Concise, professional, trading desk style.
-No fluff. No analogies. No hype.
-"""
-
-# =========================================================
-# PROMPT BUILDER
-# =========================================================
-
-def build_user_prompt(chart_intel: dict, mode: str = "beginner") -> str:
-    """
-    Convert structured intelligence into a clean LLM request
-    """
-
-    asset = chart_intel.get("asset")
-    tf = chart_intel.get("timeframe")
-    price = chart_intel.get("current_price")
-
-    behavior = chart_intel.get("market_behavior", {})
-    candle = chart_intel.get("last_candle", {})
-    levels = chart_intel.get("key_levels", {})
-    multi = chart_intel.get("multi_timeframe", {})
-    decision = chart_intel.get("decision", {})
-
-    if mode == "pro":
-        instruction = "Provide a concise professional market read."
-    else:
-        instruction = "Explain this to someone learning how markets work."
-
-    return f"""
-Asset: {asset}
-Timeframe: {tf}
-Current Price: {price}
-
-Market Behavior:
-{behavior}
-
-Last Candle:
-{candle}
-
-Key Levels:
-{levels}
-
-Multi-Timeframe Context:
-{multi}
-
-Trader Decision Context:
-{decision}
-
-Instruction:
-{instruction}
-
-Never predict price.
-Never tell user to buy or sell.
-Explain only the provided data.
-"""
-
-
-# =========================================================
-# MAIN EXPLANATION FUNCTION
-# =========================================================
-
-def get_completion(prompt: str, model: str = "gpt-4o-mini") -> str:
-    """
-    Send a raw prompt and return the completion text.
-    """
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content.strip()
-
-
-def explain_chart(chart_intel: dict, mode: str = "beginner") -> str:
-    """
-    Generate explanation for chart intelligence
-    mode = "beginner" | "pro"
-    """
-
-    if not chart_intel or "error" in chart_intel:
-        return "Market data unavailable or incomplete."
-
-    system_prompt = BEGINNER_SYSTEM_PROMPT if mode == "beginner" else PRO_SYSTEM_PROMPT
-    user_prompt = build_user_prompt(chart_intel, mode)
-
+def get_completion(prompt: str, max_tokens: int = 500) -> str:
+    """Get completion from OpenAI API"""
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",   # fast, cheap, strong reasoning
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=0.7
         )
-
-        text = response.choices[0].message.content.strip()
-
-        # Safety fallback
-        if len(text) < 10:
-            return "Unable to interpret current market conditions."
-
-        return text
-
+        return response.choices[0].message.content
     except Exception as e:
-        return f"AI explanation failed: {str(e)}"
-
+        raise Exception(f"OpenAI API error: {str(e)}")
