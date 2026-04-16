@@ -260,3 +260,31 @@ async def ai_analyze_period(request: dict):
             detail=f"AI service error: {str(e)}"
         )
 
+@app.post("/ai/hover")
+async def ai_hover_endpoint(request: dict):
+    """
+    Provide real-time hover analysis for individual candles.
+    """
+    import os
+    import httpx
+    
+    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
+    
+    if not ai_url:
+        raise HTTPException(
+            status_code=500,
+            detail="AI_ORCHESTRATOR_URL not configured"
+        )
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{ai_url}/ai/hover",
+                json=request
+            )
+            return response.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI service error: {str(e)}"
+        )
