@@ -6,8 +6,7 @@ from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from intelligence_builder import build_chart_intel
-from openai_client import explain_chart
-
+from openai_client import get_completion
 
 # ===================================================
 # App
@@ -78,7 +77,7 @@ async def explain_structured(req: ExplainRequest):
             levels=req.levels,
         )
 
-        explanation = explain_chart(chart_intel)
+        explanation = get_completion(chart_intel)
 
         return {"explanation": explanation}
 
@@ -111,7 +110,7 @@ async def explain_raw(data: dict):
             levels=data.get("levels"),
         )
 
-        explanation = explain_chart(chart_intel)
+        explanation = get_completion(chart_intel)
 
         return {"explanation": explanation}
 
