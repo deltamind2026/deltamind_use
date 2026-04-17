@@ -85,23 +85,35 @@ export default function ProChart({
 
     /* ---------------- HOVER AI ---------------- */
 
-    chart.subscribeCrosshairMove(param=>{
-      if(!param.time || !barsRef.current.length) return;
+    /* ---------------- HOVER AI ---------------- */
 
-      const bars=barsRef.current;
-      const idx=bars.findIndex(b=>b.t===param.time);
-      if(idx<0) return;
+    chart.subscribeCrosshairMove(param => {
+      if (!param.time || !barsRef.current.length) return;
 
-      const candle={
-        open:bars[idx].o,
-        high:bars[idx].h,
-        low:bars[idx].l,
-        close:bars[idx].c,
-        volume:bars[idx].v
+      const bars = barsRef.current;
+      const idx = bars.findIndex(b => b.t === param.time);
+      if (idx < 0) return;
+
+      const candle = {
+        open: bars[idx].o,
+        high: bars[idx].h,
+        low: bars[idx].l,
+        close: bars[idx].c,
+        volume: bars[idx].v
       };
 
-      window.dispatchEvent(new CustomEvent("dm-hover-candle",{
-        detail:{candle,market_state:marketStateRef.current}
+      // Get mouse position relative to viewport
+      const rect = priceRef.current?.getBoundingClientRect();
+      const mouseX = param.point?.x ? rect.left + param.point.x : 0;
+      const mouseY = param.point?.y ? rect.top + param.point.y : 0;
+
+      window.dispatchEvent(new CustomEvent("dm-hover-candle", {
+        detail: { 
+          candle, 
+          market_state: marketStateRef.current,
+          mouseX,
+          mouseY
+        }
       }));
     });
 
