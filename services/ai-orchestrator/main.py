@@ -87,34 +87,52 @@ async def explain_structured(req: dict):
 # Dev / Testing Endpoint (Flexible Payload)
 # ===================================================
 
-@app.post("/explain")
-async def explain_raw(data: dict):
-    """
-    Flexible testing endpoint.
-    Accepts raw payloads without strict schema.
-    Useful for debugging during development.
-    """
-
+@app.post("/ai/explain")
+async def explain_structured(req: dict):
     try:
         chart_intel = build_chart_intel(
-            asset=data.get("asset"),
-            timeframe=data.get("timeframe"),
-            candles=data.get("candles"),
-            market_state=data.get("market_state"),
-            indicators=data.get("indicators"),
-            levels=data.get("levels"),
+            asset=req.get("asset"),
+            timeframe=req.get("timeframe"),
+            candles=req.get("candles", []),
+            market_state=req.get("market_state", {}),
+            indicators=req.get("indicators", {}),
+            levels=req.get("levels", {}),
         )
 
-        explanation = get_completion(chart_intel)
+        # Convert the structured intelligence into a text prompt
+        prompt = f"""Analyze {chart_intel.get('asset')} stock for a beginner investor.
+
+Current Price: ${chart_intel.get('current_price', 0):.2f}
+Timeframe: {chart_intel.get('timeframe')}
+
+Market Behavior:
+{chart_intel.get('market_behavior', {})}
+
+Last Candle:
+{chart_intel.get('last_candle', {})}
+
+Trading Decision Context:
+{chart_intel.get('decision', {})}
+
+Instructions: {chart_intel.get('instruction', 'Provide clear, beginner-friendly analysis.')}
+
+Provide a beginner-friendly analysis in 4 sections:
+1. What the Market is Doing (2-3 sentences)
+2. Why This Matters (2-3 sentences)
+3. What Could Change (2-3 sentences)  
+4. Risk Awareness (2-3 sentences)
+
+Keep it simple and avoid jargon."""
+
+        explanation = get_completion(prompt, max_tokens=400)
 
         return {"explanation": explanation}
 
     except Exception as e:
         raise HTTPException(
-            status_code=400,
-            detail=f"Bad payload: {str(e)}"
+            status_code=500,
+            detail=f"AI explanation failed: {str(e)}"
         )
-
 
 # ===================================================
 # Ultra-Fast Hover Explanation (Realtime Tooltip)
