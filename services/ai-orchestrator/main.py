@@ -118,7 +118,6 @@ async def hover_explain(data: dict):
     Very fast rule-based explanation for crosshair hover.
     No LLM call — instant response.
     """
-
     try:
         candle = data.get("candle", {})
         state = data.get("market_state", {})
@@ -127,27 +126,45 @@ async def hover_explain(data: dict):
         open_ = candle.get("open")
 
         if close is None or open_ is None:
-            return {"text": "No candle data"}
+            return {"text": "No data"}
 
-        direction = "bullish" if close > open_ else "bearish"
+        # Simple direction
+        if close > open_:
+            direction = "Green candle (price went up)"
+            emoji = "🟢"
+        elif close < open_:
+            direction = "Red candle (price went down)"
+            emoji = "🔴"
+        else:
+            direction = "Flat (no change)"
+            emoji = "⚪"
 
+        # Market context
         regime = state.get("regime", "unknown")
         volatility = state.get("volatility_state", "normal")
-        pattern = state.get("pattern", "none")
-        ema_trend = state.get("ema_trend", "mixed")
+        
+        # Beginner-friendly regime description
+        if regime == "trend":
+            market_desc = "in a trending market"
+        elif regime == "range":
+            market_desc = "bouncing in a range"
+        else:
+            market_desc = "in mixed conditions"
 
-        explanation = (
-            f"{direction} candle inside {regime} market. "
-            f"Volatility is {volatility}. "
-            f"Trend alignment: {ema_trend}. "
-            f"Pattern context: {pattern}."
-        )
+        # Beginner-friendly volatility
+        if volatility == "expanding":
+            vol_desc = "Price is moving more than usual"
+        elif volatility == "contracting":
+            vol_desc = "Price is calmer than usual"
+        else:
+            vol_desc = "Normal price movement"
+
+        explanation = f"{emoji} {direction} {market_desc}. {vol_desc}."
 
         return {"text": explanation}
 
     except Exception:
-        return {"text": "Unable to analyze candle"}
-
+        return {"text": "Unable to analyze"}
 
 @app.post("/ai/analyze-period")
 async def analyze_time_period(req: dict):

@@ -322,10 +322,26 @@ export default function DrawingOverlay({
   return (
     <div style={{ position:'absolute', inset:0, pointerEvents:'none', zIndex: 10 }}>
       <div style={{ position:'absolute', top:12, left:12, display:'flex', gap:8, zIndex: 50, pointerEvents:'auto' }}>
-        <button onClick={()=>setTool('none')} style={btn(tool==='none')}>Cursor</button>
-        <button onClick={()=>setTool('trendline')} style={btn(tool==='trendline')}>Trendline</button>
-        <button onClick={()=>setTool('fib')} style={btn(tool==='fib')}>Fib</button>
-        <button onClick={()=>setTool('timewindow')} style={btn(tool==='timewindow')}>Time Window</button>
+        <button onClick={()=>{
+          setTool('none');
+          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'none' } }));
+        }} style={btn(tool==='none')}>Cursor</button>
+        
+        <button onClick={()=>{
+          setTool('trendline');
+          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'trendline' } }));
+        }} style={btn(tool==='trendline')}>Trendline</button>
+        
+        <button onClick={()=>{
+          setTool('fib');
+          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'fib' } }));
+        }} style={btn(tool==='fib')}>Fib</button>
+        
+        <button onClick={()=>{
+          setTool('timewindow');
+          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'timewindow' } }));
+        }} style={btn(tool==='timewindow')}>Time Window</button>
+        
         <button onClick={()=>{setTrendlines([]); setFibs([]); setTimeWindows([]);}} style={btn(false)}>Clear</button>
       </div>
 

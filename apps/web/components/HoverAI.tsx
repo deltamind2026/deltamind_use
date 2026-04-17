@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 export default function HoverAI(){
   const [text, setText] = useState<string>("");
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [isDrawing, setIsDrawing] = useState(false);
   
   useEffect(() => {
     let lastTime = 0;
@@ -35,11 +36,22 @@ export default function HoverAI(){
       }
     };
     
+    // Listen for drawing tool changes
+    const toolHandler = (e: any) => {
+      setIsDrawing(e.detail?.tool !== 'none');
+    };
+    
     window.addEventListener("dm-hover-candle", handler);
-    return () => window.removeEventListener("dm-hover-candle", handler);
+    window.addEventListener("dm-drawing-tool-change", toolHandler);
+    
+    return () => {
+      window.removeEventListener("dm-hover-candle", handler);
+      window.removeEventListener("dm-drawing-tool-change", toolHandler);
+    };
   }, []);
   
-  if (!text) return null;
+  // Don't show during drawing mode
+  if (!text || isDrawing) return null;
   
   return (
     <div style={{
