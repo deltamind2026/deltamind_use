@@ -56,32 +56,6 @@ def hello():
     }
 
 
-# ===================================================
-# Full AI Explanation (LLM)
-# ===================================================
-
-@app.post("/ai/explain")
-async def explain_structured(req: dict):
-    try:
-        chart_intel = build_chart_intel(
-            asset=req.get("asset"),
-            timeframe=req.get("timeframe"),
-            candles=req.get("candles", []),
-            market_state=req.get("market_state", {}),
-            indicators=req.get("indicators", {}),
-            levels=req.get("levels", {}),
-        )
-
-        explanation = get_completion(chart_intel)
-
-        return {"explanation": explanation}
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI explanation failed: {str(e)}"
-        )
-
 
 # ===================================================
 # Dev / Testing Endpoint (Flexible Payload)
