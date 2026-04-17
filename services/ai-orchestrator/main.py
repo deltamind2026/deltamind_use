@@ -60,21 +60,16 @@ def hello():
 # Full AI Explanation (LLM)
 # ===================================================
 
-@app.post("/ai/explain", response_model=ExplainResponse)
-async def explain_structured(req: ExplainRequest):
-    """
-    Main production AI endpoint.
-    Uses structured market_state + candles to produce narrative analysis.
-    """
-
+@app.post("/ai/explain")
+async def explain_structured(req: dict):
     try:
         chart_intel = build_chart_intel(
-            asset=req.asset,
-            timeframe=req.timeframe,
-            candles=req.candles,
-            market_state=req.market_state,
-            indicators=req.indicators,
-            levels=req.levels,
+            asset=req.get("asset"),
+            timeframe=req.get("timeframe"),
+            candles=req.get("candles", []),
+            market_state=req.get("market_state", {}),
+            indicators=req.get("indicators", {}),
+            levels=req.get("levels", {}),
         )
 
         explanation = get_completion(chart_intel)
