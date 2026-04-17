@@ -13,6 +13,7 @@ export default function CanvasPage(){
   const [settings, setSettings] = useState<IndicatorSettings>(DEFAULT_SETTINGS);
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
   const [showAddSymbol, setShowAddSymbol] = useState(false);
+  const [showManageStocks, setShowManageStocks] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
   const [searchError, setSearchError] = useState('');
 
@@ -82,6 +83,15 @@ export default function CanvasPage(){
     }
   };
 
+  // Clear all custom symbols
+  const handleClearAll = () => {
+    saveCustomSymbols([]);
+    if (!DEFAULT_SYMBOLS.includes(symbol)) {
+      setSymbol('NVDA');
+    }
+    setShowManageStocks(false);
+  };
+
   const allSymbols = [...DEFAULT_SYMBOLS, ...customSymbols];
 
   return (
@@ -93,8 +103,12 @@ export default function CanvasPage(){
         </div>
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
           <select value={symbol} onChange={e=>setSymbol(e.target.value)} style={sel}>
-            {allSymbols.map(sym => (
+            {DEFAULT_SYMBOLS.map(sym => (
               <option key={sym} value={sym}>{sym}</option>
+            ))}
+            {customSymbols.length > 0 && <option disabled>──────────</option>}
+            {customSymbols.map(sym => (
+              <option key={sym} value={sym}>★ {sym}</option>
             ))}
           </select>
           
@@ -113,6 +127,24 @@ export default function CanvasPage(){
           >
             + Add Stock
           </button>
+
+          {customSymbols.length > 0 && (
+            <button 
+              onClick={() => setShowManageStocks(!showManageStocks)}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                background: '#374151',
+                border: 'none',
+                color: '#e5e7eb',
+                fontWeight: 800,
+                cursor: 'pointer',
+                fontSize: 14
+              }}
+            >
+              Manage ({customSymbols.length})
+            </button>
+          )}
 
           <select value={tf} onChange={e=>setTf(e.target.value)} style={sel}>
             <option value="1D">1D</option>
@@ -189,43 +221,106 @@ export default function CanvasPage(){
           {searchError && (
             <div style={{ color: '#ef4444', fontSize: 12 }}>{searchError}</div>
           )}
-          {customSymbols.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Your Custom Stocks:</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {customSymbols.map(sym => (
-                  <div
-                    key={sym}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '6px 10px',
-                      background: '#1f2a44',
-                      borderRadius: 6,
-                      fontSize: 12
-                    }}
-                  >
-                    <span>{sym}</span>
-                    <button
-                      onClick={() => handleRemoveSymbol(sym)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        fontSize: 14,
-                        padding: 0,
-                        lineHeight: 1
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
+        </div>
+      )}
+
+      {/* Manage Stocks Modal */}
+      {showManageStocks && customSymbols.length > 0 && (
+        <div style={{
+          background: '#0b1226',
+          border: '1px solid #1f2a44',
+          borderRadius: 12,
+          padding: 16,
+          maxWidth: 500
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: 12 
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>
+              Your Custom Stocks ({customSymbols.length})
             </div>
-          )}
+            <button
+              onClick={handleClearAll}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                background: '#dc2626',
+                border: 'none',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontSize: 12
+              }}
+            >
+              Clear All
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {customSymbols.map(sym => (
+              <div
+                key={sym}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 12px',
+                  background: '#020617',
+                  border: '1px solid #1f2a44',
+                  borderRadius: 8
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16, fontWeight: 700 }}>★ {sym}</span>
+                  {symbol === sym && (
+                    <span style={{ 
+                      fontSize: 11, 
+                      color: '#22c55e', 
+                      background: '#022c22',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      fontWeight: 700
+                    }}>
+                      ACTIVE
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleRemoveSymbol(sym)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    background: '#374151',
+                    border: 'none',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 700
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowManageStocks(false)}
+            style={{
+              marginTop: 12,
+              padding: '8px 16px',
+              borderRadius: 8,
+              background: '#374151',
+              border: 'none',
+              color: '#e5e7eb',
+              fontWeight: 700,
+              cursor: 'pointer',
+              width: '100%'
+            }}
+          >
+            Done
+          </button>
         </div>
       )}
 
