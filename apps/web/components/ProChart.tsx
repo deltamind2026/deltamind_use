@@ -14,6 +14,94 @@ function mapLine(data:number[], bars:OHLCV[]){
   return data.map((v,i)=>v?{time:bars[i].t as UTCTimestamp,value:v}:null).filter(Boolean) as any;
 }
 
+type AiMetric = {
+  name: string;
+  value: string;
+  explanation: string;
+  evaluation: string;
+  evaluationExplanation: string;
+};
+
+type AiExplanation = {
+  metrics: AiMetric[];
+  current?: string;
+  future?: string;
+  risks?: string;
+  fallbackText?: string;
+};
+
+function parseAiExplanation(raw?: string): AiExplanation {
+  if (!raw || typeof raw !== 'string') {
+    return { metrics: [], fallbackText: "AI unavailable" };
+  }
+
+  const metricRegex = /\{"metric":\s*\[(.*?)\]\}/g;
+  const sectionRegex = /\{"(current|future|risks)":\s*(.+?)\}/g;
+
+  const cleanToken = (token: string) =>
+    token.trim().replace(/^['"]|['"]$/g, '').replace(/\\"/g, '"');
+
+  const splitMetricParts = (content: string) => {
+    const parts: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < content.length; i += 1) {
+      const char = content[i];
+      const prev = i > 0 ? content[i - 1] : '';
+
+      if (char === '"' && prev !== '\\') {
+        inQuotes = !inQuotes;
+      }
+
+      if (char === ',' && !inQuotes) {
+        parts.push(current);
+        current = '';
+        continue;
+      }
+
+      current += char;
+    }
+
+    if (current) parts.push(current);
+    return parts.map(cleanToken);
+  };
+
+  const metrics: AiMetric[] = [];
+  let metricMatch: RegExpExecArray | null;
+
+  while ((metricMatch = metricRegex.exec(raw)) !== null) {
+    const [name, value, explanation, evaluation, evaluationExplanation] = splitMetricParts(metricMatch[1]);
+    if (!name) continue;
+
+    metrics.push({
+      name,
+      value: value || '',
+      explanation: explanation || '',
+      evaluation: evaluation || 'N/A',
+      evaluationExplanation: evaluationExplanation || '',
+    });
+  }
+
+  const sections: Partial<Record<'current' | 'future' | 'risks', string>> = {};
+  let sectionMatch: RegExpExecArray | null;
+
+  while ((sectionMatch = sectionRegex.exec(raw)) !== null) {
+    sections[sectionMatch[1] as 'current' | 'future' | 'risks'] = cleanToken(sectionMatch[2]);
+  }
+
+  if (!metrics.length && !sections.current && !sections.future && !sections.risks) {
+    return { metrics: [], fallbackText: raw };
+  }
+
+  return {
+    metrics,
+    current: sections.current,
+    future: sections.future,
+    risks: sections.risks,
+  };
+}
+
 /* ------------------------------------------------ */
 
 export default function ProChart({
@@ -34,6 +122,7 @@ export default function ProChart({
   const optionsRef = useRef<any[]>([]);
 
   const [aiText,setAiText]=useState("Analyzing market...");
+  const [aiExplanation, setAiExplanation] = useState<AiExplanation>({ metrics: [], fallbackText: "Analyzing market..." });
   const [drawingAnalysis, setDrawingAnalysis] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [timeWindowAnalysis, setTimeWindowAnalysis] = useState<string>("");
@@ -200,9 +289,12 @@ export default function ProChart({
             body:JSON.stringify(payload)
           }).then(r=>r.json());
 
-          setAiText(ai?.explanation||"AI unavailable");
+          const parsedExplanation = parseAiExplanation(ai?.explanation);
+          setAiExplanation(parsedExplanation);
+          setAiText(parsedExplanation.fallbackText || "");
         }catch(err){
           console.error("AI error:", err);
+          setAiExplanation({ metrics: [], fallbackText: "AI analysis unavailable" });
           setAiText("AI analysis unavailable");
         } finally {
           setLoading(false);  // CLEAR LOADING
@@ -343,7 +435,61 @@ export default function ProChart({
         color:"#e5e7eb"
       }}>
         <b style={{color:"#22d3ee"}}>DeltaMind Insight</b>
-        <div style={{marginTop:6,whiteSpace:"pre-wrap"}}>{aiText}</div>
+        {aiExplanation.metrics.length > 0 && (
+          <div style={{
+            marginTop:10,
+            display:'grid',
+            gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',
+            gap:10
+          }}>
+            {aiExplanation.metrics.map((metric, index) => {
+              const evaluation = metric.evaluation.toLowerCase();
+              const normalizedEvaluation = evaluation;
+              const metricColors =
+                normalizedEvaluation === 'positive'
+                  ? { border: '#22c55e', background: 'rgba(34,197,94,0.10)', accent: '#86efac' }
+                  : normalizedEvaluation === 'neutral'
+                    ? { border: '#eab308', background: 'rgba(234,179,8,0.10)', accent: '#fde047' }
+                    : normalizedEvaluation === 'negative'
+                      ? { border: '#ef4444', background: 'rgba(239,68,68,0.10)', accent: '#fca5a5' }
+                      : { border: '#475569', background: 'rgba(71,85,105,0.18)', accent: '#cbd5e1' };
+
+              return (
+                <div
+                  key={`${metric.name}-${index}`}
+                  style={{
+                    border:`1px solid ${metricColors.border}`,
+                    background:metricColors.background,
+                    borderRadius:12,
+                    padding:'10px 12px'
+                  }}
+                >
+                  <div style={{fontSize:12,color:metricColors.accent,textTransform:'uppercase',letterSpacing:0.6}}>
+                    {normalizedEvaluation}
+                  </div>
+                  <div style={{marginTop:4,fontWeight:700,color:'#f8fafc'}}>{metric.name}</div>
+                  {metric.value && (
+                    <div style={{marginTop:4,fontSize:18,color:'#e5e7eb'}}>{metric.value}</div>
+                  )}
+                  {metric.explanation && (
+                    <div style={{marginTop:6,fontSize:13,color:'#cbd5e1',lineHeight:1.4}}>{metric.explanation}</div>
+                  )}
+                  {metric.evaluationExplanation && (
+                    <div style={{marginTop:6,fontSize:12,color:'#94a3b8',lineHeight:1.4}}>
+                      {metric.evaluationExplanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {aiExplanation.current && <div style={{marginTop:10,whiteSpace:"pre-wrap"}}><b>Current:</b> {aiExplanation.current}</div>}
+        {aiExplanation.future && <div style={{marginTop:8,whiteSpace:"pre-wrap"}}><b>Future:</b> {aiExplanation.future}</div>}
+        {aiExplanation.risks && <div style={{marginTop:8,whiteSpace:"pre-wrap"}}><b>Risks:</b> {aiExplanation.risks}</div>}
+        {!aiExplanation.metrics.length && !aiExplanation.current && !aiExplanation.future && !aiExplanation.risks && (
+          <div style={{marginTop:6,whiteSpace:"pre-wrap"}}>{aiText}</div>
+        )}
       </div>
 
       {/* Drawing Analysis panel */}

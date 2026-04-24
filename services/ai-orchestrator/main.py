@@ -90,15 +90,23 @@ Trading Decision Context:
 
 Instructions: {chart_intel.get('instruction', 'Provide clear, beginner-friendly analysis.')}
 
-Provide a beginner-friendly analysis in 4 sections:
-1. What the Market is Doing (2-3 sentences)
-2. Why This Matters (2-3 sentences)
-3. What Could Change (2-3 sentences)  
-4. Risk Awareness (2-3 sentences)
+Provide a beginner-friendly analysis:
 
-Keep it simple and avoid jargon."""
+For the 8 metrics in market behavior (not anything else), extract key important metrics. For each of them, put in brackets like this to be parsed later:
+{{"metric": [metric_name, metric_value, metric_explanation, metric_evaluation, metric_evaluation_explanation]}}
 
-        explanation = get_completion(prompt, max_tokens=400)
+Metric name should be the name, in a formattible way ("Trend Strength" instead of "trend_strength")
+Metric explaination is what the metric is.
+Metric evaluation is either "positive", "neutral", or "negative". If a metric is relative and cannot be evaluated by itself, use "N/A".
+
+Afterwards, write:
+{{"current": what_market_is_doing_explanation}}
+{{"future": what_could_change_explanation}}
+{{"risks": potential_risks_explanation}}.
+
+Keep explanations easy to understand and 2-3 sentences. Avoid jargon."""
+
+        explanation = get_completion(prompt, max_tokens=1000)
 
         return {"explanation": explanation}
 
