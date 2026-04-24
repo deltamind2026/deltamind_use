@@ -214,6 +214,7 @@ async def ai_explain_endpoint(request: dict):
     import httpx
     
     ai_url = os.getenv("AI_ORCHESTRATOR_URL")
+    #ai_url = "http://localhost:8002"
     
     if not ai_url:
         raise HTTPException(
@@ -222,7 +223,7 @@ async def ai_explain_endpoint(request: dict):
         )
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{ai_url}/ai/explain",
                 json=request
