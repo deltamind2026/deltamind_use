@@ -1,5 +1,4 @@
 import Link from 'next/link';
-
 export default function Home() {
   return (
     <main style={{ padding: 24, color: '#e5e7eb' }}>
@@ -8,14 +7,13 @@ export default function Home() {
         Pro chart engine (drawings + indicator settings + volume profile) and real options chain adapters (Tradier + Deribit).
       </p>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-        <Link href="/dashboard/canvas" style={btn}>Canvas</Link>
-        <Link href="/dashboard/options" style={btn}>Options Chain</Link>
+        <Link href="/dashboard/canvas" style={btn}>Canvas (Bypass Mode)</Link>
+        <Link href="/dashboard/options" style={btn}>Options Chain (Bypass Mode)</Link>
         <Link href="/dashboard/portfolio" style={btn}>Portfolio</Link>
       </div>
     </main>
   );
 }
-
 const btn: any = {
   padding: '10px 14px',
   borderRadius: 12,

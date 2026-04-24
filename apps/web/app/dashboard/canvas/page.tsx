@@ -5,10 +5,12 @@ import IndicatorPanel from '@/components/IndicatorPanel';
 import ProChart from '@/components/ProChart';
 import type { IndicatorSettings } from '@/lib/ta/settings';
 import { DEFAULT_SETTINGS } from '@/lib/ta/settings';
+import { Suspense } from 'react';
+
 
 const DEFAULT_SYMBOLS = ['NVDA', 'AAPL', 'TSLA', 'NFLX', 'HOOD', 'SPY'];
 
-export default function CanvasPage(){
+function CanvasPageInner(){
   const searchParams = useSearchParams();
   const [symbol, setSymbol] = useState(() => searchParams.get('symbol') || 'NVDA');
   const [tf, setTf] = useState('1D');
@@ -334,6 +336,14 @@ export default function CanvasPage(){
         Tip: use Trendline/Fib tools (top-left of chart) → drag to draw. Indicators persist in localStorage.
       </div>
     </div>
+  );
+}
+
+export default function CanvasPage() {
+  return (
+    <Suspense>
+      <CanvasPageInner />
+    </Suspense>
   );
 }
 
