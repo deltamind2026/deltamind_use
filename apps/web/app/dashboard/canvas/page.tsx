@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import IndicatorPanel from '@/components/IndicatorPanel';
 import ProChart from '@/components/ProChart';
 import type { IndicatorSettings } from '@/lib/ta/settings';
@@ -8,7 +9,8 @@ import { DEFAULT_SETTINGS } from '@/lib/ta/settings';
 const DEFAULT_SYMBOLS = ['NVDA', 'AAPL', 'TSLA', 'NFLX', 'HOOD', 'SPY'];
 
 export default function CanvasPage(){
-  const [symbol, setSymbol] = useState('NVDA');
+  const searchParams = useSearchParams();
+  const [symbol, setSymbol] = useState(() => searchParams.get('symbol') || 'NVDA');
   const [tf, setTf] = useState('1D');
   const [settings, setSettings] = useState<IndicatorSettings>(DEFAULT_SETTINGS);
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
@@ -47,7 +49,6 @@ export default function CanvasPage(){
       return;
     }
 
-    // Validate symbol exists by trying to fetch data
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8040';
       const res = await fetch(`${API_URL}/market/ohlc?symbol=${sym}&tf=1D&limit=1`);
@@ -64,7 +65,6 @@ export default function CanvasPage(){
         return;
       }
 
-      // Valid symbol - add it
       saveCustomSymbols([...customSymbols, sym]);
       setSymbol(sym);
       setNewSymbol('');
@@ -98,7 +98,9 @@ export default function CanvasPage(){
     <div style={{ padding: 24, color:'#e5e7eb', display:'grid', gap:12 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'end', flexWrap:'wrap', gap:10 }}>
         <div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>Pro Chart Canvas</div>
+          <div style={{ fontSize: 26, fontWeight: 900 }}>
+            Pro Chart Canvas — <span style={{ color: '#60a5fa' }}>{symbol}</span>
+          </div>
           <div style={{ color:'#94a3b8' }}>Drawings + indicator config + volume profile</div>
         </div>
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
@@ -335,7 +337,7 @@ export default function CanvasPage(){
   );
 }
 
-const sel:any = { 
+const sel: any = { 
   padding:'10px 12px', 
   borderRadius: 12, 
   background:'#0b1226', 
