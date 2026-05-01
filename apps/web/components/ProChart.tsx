@@ -25,6 +25,7 @@ type AiMetric = {
 type AiExplanation = {
   metrics: AiMetric[];
   current?: string;
+  
   future?: string;
   risks?: string;
   fallbackText?: string;
@@ -121,6 +122,7 @@ export default function ProChart({
   const multiStateRef = useRef<any>({});
   const optionsRef = useRef<any[]>([]);
 
+  const [showLegend, setShowLegend] = useState(false);
   const [aiText,setAiText]=useState("Analyzing market...");
   const [aiExplanation, setAiExplanation] = useState<AiExplanation>({ metrics: [], fallbackText: "Analyzing market..." });
   const [drawingAnalysis, setDrawingAnalysis] = useState<string>("");
@@ -404,8 +406,66 @@ export default function ProChart({
 
   /* ---------------- UI ---------------- */
 
+  const LEGEND_ITEMS = [
+    { color: '#facc15', label: 'SMA 20', description: 'Average price over the last 20 days' },
+    { color: '#a78bfa', label: 'VWAP', description: "Today's average price weighted by how much was traded" },
+    { color: '#94a3b8', label: 'Bollinger Bands', description: 'The normal price range — unusual moves happen outside these bands' },
+    { color: '#22c55e', label: 'EMA 9', description: 'Short-term trend — reacts quickly to recent price changes' },
+    { color: '#60a5fa', label: 'EMA 21', description: 'Medium-term trend — smooths out day-to-day noise' },
+    { color: '#f59e0b', label: 'EMA 50', description: 'Long-term trend — widely watched by institutional traders' },
+    { color: '#ef4444', label: 'EMA 200', description: 'Very long-term trend — above this is generally considered healthy' },
+  ];
+
   return(
     <div>
+      {/* Chart Legend */}
+      <div style={{ marginBottom: 8 }}>
+        <button
+          onClick={() => setShowLegend(s => !s)}
+          style={{
+            background: 'none',
+            border: '1px solid #1f2a44',
+            borderRadius: 8,
+            color: '#94a3b8',
+            fontSize: 12,
+            fontWeight: 700,
+            padding: '4px 12px',
+            cursor: 'pointer',
+          }}
+        >
+          {showLegend ? 'Hide Legend' : 'What do the lines mean?'}
+        </button>
+        {showLegend && (
+          <div style={{
+            marginTop: 8,
+            background: '#0b1226',
+            border: '1px solid #1f2a44',
+            borderRadius: 12,
+            padding: 16,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 10,
+          }}>
+            {LEGEND_ITEMS.map(item => (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{
+                  width: 16,
+                  height: 3,
+                  background: item.color,
+                  borderRadius: 2,
+                  flexShrink: 0,
+                  marginTop: 7,
+                }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb' }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>{item.description}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Price chart with drawing overlay */}
       <div style={{position:'relative'}}>
         <div ref={priceRef}/>
