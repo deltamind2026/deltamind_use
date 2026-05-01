@@ -15,7 +15,7 @@ export type IndicatorSettings = {
 };
 
 export const DEFAULT_SETTINGS: IndicatorSettings = {
-  enabled: { SMA:true, EMA:false, VWAP:true, RSI:true, MACD:true, BOLL:true, VOLUME_PROFILE:true },
+  enabled: { SMA:true, EMA:true, VWAP:true, RSI:true, MACD:true, BOLL:true, VOLUME_PROFILE:true },
   params: {
     SMA:{ period:20 },
     EMA:{ period:50 },

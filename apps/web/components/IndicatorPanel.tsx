@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, IndicatorSettings, loadSettings, saveSettings } from '@/lib/ta/settings';
@@ -24,27 +23,42 @@ export default function IndicatorPanel({ onChange }:{ onChange:(s:IndicatorSetti
       <div style={{ fontWeight: 900, marginBottom: 8 }}>Indicators</div>
 
       <Row label="SMA">
+        <Swatch color="#facc15" />
         <input type="checkbox" checked={s.enabled.SMA} onChange={e=>upd({...s, enabled:{...s.enabled, SMA:e.target.checked}})} />
         <Num label="Period" value={s.params.SMA.period} onChange={v=>upd({...s, params:{...s.params, SMA:{period:v}}})} />
       </Row>
 
       <Row label="VWAP">
+        <Swatch color="#a78bfa" />
         <input type="checkbox" checked={s.enabled.VWAP} onChange={e=>upd({...s, enabled:{...s.enabled, VWAP:e.target.checked}})} />
         <span style={hint}>Session VWAP</span>
       </Row>
 
       <Row label="Bollinger">
+        <Swatch color="#94a3b8" dotted />
         <input type="checkbox" checked={s.enabled.BOLL} onChange={e=>upd({...s, enabled:{...s.enabled, BOLL:e.target.checked}})} />
         <Num label="Period" value={s.params.BOLL.period} onChange={v=>upd({...s, params:{...s.params, BOLL:{...s.params.BOLL, period:v}}})} />
-        <Num label="σ" step={0.1} value={s.params.BOLL.stdev} onChange={v=>upd({...s, params:{...s.params, BOLL:{...s.params.BOLL, stdev:v}}})} />
+        <Num label="sigma" step={0.1} value={s.params.BOLL.stdev} onChange={v=>upd({...s, params:{...s.params, BOLL:{...s.params.BOLL, stdev:v}}})} />
+      </Row>
+
+      <Row label="EMA Stack">
+        <Swatch color="#22c55e" />
+        <Swatch color="#60a5fa" />
+        <Swatch color="#f59e0b" />
+        <Swatch color="#ef4444" />
+        <input type="checkbox" checked={s.enabled.EMA} onChange={e=>upd({...s, enabled:{...s.enabled, EMA:e.target.checked}})} />
+        <span style={hint}>9 / 21 / 50 / 200</span>
       </Row>
 
       <Row label="RSI">
+        <Swatch color="#a78bfa" />
         <input type="checkbox" checked={s.enabled.RSI} onChange={e=>upd({...s, enabled:{...s.enabled, RSI:e.target.checked}})} />
         <Num label="Period" value={s.params.RSI.period} onChange={v=>upd({...s, params:{...s.params, RSI:{period:v}}})} />
       </Row>
 
       <Row label="MACD">
+        <Swatch color="#22c55e" />
+        <Swatch color="#ef4444" />
         <input type="checkbox" checked={s.enabled.MACD} onChange={e=>upd({...s, enabled:{...s.enabled, MACD:e.target.checked}})} />
         <Num label="Fast" value={s.params.MACD.fast} onChange={v=>upd({...s, params:{...s.params, MACD:{...s.params.MACD, fast:v}}})} />
         <Num label="Slow" value={s.params.MACD.slow} onChange={v=>upd({...s, params:{...s.params, MACD:{...s.params.MACD, slow:v}}})} />
@@ -52,6 +66,7 @@ export default function IndicatorPanel({ onChange }:{ onChange:(s:IndicatorSetti
       </Row>
 
       <Row label="Volume Profile">
+        <Swatch color="#22c55e" />
         <input type="checkbox" checked={s.enabled.VOLUME_PROFILE} onChange={e=>upd({...s, enabled:{...s.enabled, VOLUME_PROFILE:e.target.checked}})} />
         <Num label="Bin $" value={s.params.VOLUME_PROFILE.binSize} onChange={v=>upd({...s, params:{...s.params, VOLUME_PROFILE:{binSize:v}}})} />
       </Row>
@@ -69,6 +84,19 @@ function Row({ label, children }:{ label:string; children: React.ReactNode }){
       <div style={{ color:'#cbd5e1', fontWeight: 800 }}>{label}</div>
       <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>{children}</div>
     </div>
+  );
+}
+function Swatch({ color, dotted=false }:{ color:string; dotted?:boolean }){
+  return (
+    <span
+      style={{
+        width: 18,
+        height: 3,
+        borderRadius: 2,
+        background: dotted ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 7px)` : color,
+        flexShrink: 0,
+      }}
+    />
   );
 }
 function Num({ label, value, onChange, step=1 }:{ label:string; value:number; onChange:(v:number)=>void; step?:number }){

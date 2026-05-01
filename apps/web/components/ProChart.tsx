@@ -121,6 +121,7 @@ export default function ProChart({
   const marketStateRef = useRef<any>({});
   const multiStateRef = useRef<any>({});
   const optionsRef = useRef<any[]>([]);
+  const indicatorSeriesRef = useRef<Record<string, any[]>>({});
 
   const [showLegend, setShowLegend] = useState(false);
   const [aiText,setAiText]=useState("Analyzing market...");
@@ -146,18 +147,21 @@ export default function ProChart({
     chartRef.current = chart;
 
     const candles=chart.addCandlestickSeries();
-    const volume=chart.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:''});
+    const volume=chart.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'',title:'Volume'});
+    volume.priceScale().applyOptions({
+      scaleMargins: { top: 0.9, bottom: 0 },
+    });
 
-    const smaLine=chart.addLineSeries({color:'#facc15',lineWidth:2});
-    const vwapLine=chart.addLineSeries({color:'#a78bfa',lineWidth:2});
-    const bbU=chart.addLineSeries({color:'#94a3b8',lineWidth:1,lineStyle:LineStyle.Dotted});
-    const bbL=chart.addLineSeries({color:'#94a3b8',lineWidth:1,lineStyle:LineStyle.Dotted});
+    const smaLine=chart.addLineSeries({color:'#facc15',lineWidth:2,title:`SMA ${settings.params.SMA.period}`});
+    const vwapLine=chart.addLineSeries({color:'#a78bfa',lineWidth:2,title:'VWAP'});
+    const bbU=chart.addLineSeries({color:'#94a3b8',lineWidth:1,lineStyle:LineStyle.Dotted,title:'Bollinger Upper'});
+    const bbL=chart.addLineSeries({color:'#94a3b8',lineWidth:1,lineStyle:LineStyle.Dotted,title:'Bollinger Lower'});
 
     /* EMA STACK */
-    const ema9Line=chart.addLineSeries({color:'#22c55e',lineWidth:2});
-    const ema21Line=chart.addLineSeries({color:'#60a5fa',lineWidth:2});
-    const ema50Line=chart.addLineSeries({color:'#f59e0b',lineWidth:2});
-    const ema200Line=chart.addLineSeries({color:'#ef4444',lineWidth:3});
+    const ema9Line=chart.addLineSeries({color:'#22c55e',lineWidth:2,title:'EMA 9'});
+    const ema21Line=chart.addLineSeries({color:'#60a5fa',lineWidth:2,title:'EMA 21'});
+    const ema50Line=chart.addLineSeries({color:'#f59e0b',lineWidth:2,title:'EMA 50'});
+    const ema200Line=chart.addLineSeries({color:'#ef4444',lineWidth:3,title:'EMA 200'});
 
     let compare:any=null;
     if(compareSymbol) compare=chart.addLineSeries({color:'#f472b6',lineWidth:2});
@@ -165,14 +169,24 @@ export default function ProChart({
     /* ---------------- RSI PANEL ---------------- */
 
     const rsiChart=createChart(rsiRef.current,{height:140,layout:{background:{color:'#020617'}}});
-    const rsiLine=rsiChart.addLineSeries({color:'#a78bfa'});
+    const rsiLine=rsiChart.addLineSeries({color:'#a78bfa',title:'RSI'});
 
     /* ---------------- MACD PANEL ---------------- */
 
     const macdChart=createChart(macdRef.current,{height:140,layout:{background:{color:'#020617'}}});
-    const macdLine=macdChart.addLineSeries({color:'#22c55e'});
-    const signalLine=macdChart.addLineSeries({color:'#ef4444'});
-    const hist=macdChart.addHistogramSeries({});
+    const macdLine=macdChart.addLineSeries({color:'#22c55e',title:'MACD'});
+    const signalLine=macdChart.addLineSeries({color:'#ef4444',title:'Signal'});
+    const hist=macdChart.addHistogramSeries({title:'Histogram'});
+
+    indicatorSeriesRef.current = {
+      SMA: [smaLine],
+      VWAP: [vwapLine],
+      BOLL: [bbU, bbL],
+      EMA: [ema9Line, ema21Line, ema50Line, ema200Line],
+      RSI: [rsiLine],
+      MACD: [macdLine, signalLine, hist],
+      VOLUME_PROFILE: [volume],
+    };
 
     /* ---------------- HOVER AI ---------------- */
 
@@ -311,7 +325,14 @@ export default function ProChart({
       macdChart.remove();
     };
 
-  },[symbol,tf,compareSymbol,settings]);
+  },[symbol,tf,compareSymbol,settings.params]);
+
+  useEffect(() => {
+    Object.entries(indicatorSeriesRef.current).forEach(([key, seriesList]) => {
+      const visible = settings.enabled[key as keyof typeof settings.enabled];
+      seriesList.forEach(series => series.applyOptions({ visible }));
+    });
+  }, [settings.enabled]);
 
   /* ---------------- TIME WINDOW ANALYSIS ---------------- */
 
@@ -415,6 +436,12 @@ export default function ProChart({
     { color: '#f59e0b', label: 'EMA 50', description: 'Long-term trend — widely watched by institutional traders' },
     { color: '#ef4444', label: 'EMA 200', description: 'Very long-term trend — above this is generally considered healthy' },
   ];
+  const rsiLegend = [{ color: '#a78bfa', label: `RSI ${settings.params.RSI.period}` }];
+  const macdLegend = [
+    { color: '#22c55e', label: 'MACD' },
+    { color: '#ef4444', label: 'Signal' },
+    { color: '#94a3b8', label: 'Histogram' },
+  ];
 
   return(
     <div>
@@ -479,7 +506,9 @@ export default function ProChart({
       </div>
 
       {/* RSI and MACD panels */}
+      <PanelLegend title="RSI" items={rsiLegend} />
       <div ref={rsiRef}/>
+      <PanelLegend title="MACD" items={macdLegend} />
       <div ref={macdRef}/>
       
       {/* Hover AI tooltip */}
@@ -582,6 +611,31 @@ export default function ProChart({
           <div style={{marginTop:6,whiteSpace:"pre-wrap",fontSize:14}}>{timeWindowAnalysis}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PanelLegend({ title, items }:{ title:string; items:{ color:string; label:string }[] }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      padding: '8px 12px',
+      background: '#020617',
+      borderTop: '1px solid #1f2a44',
+      borderBottom: '1px solid #1f2a44',
+      color: '#e5e7eb',
+      fontSize: 12,
+      fontWeight: 700,
+    }}>
+      <span>{title}</span>
+      {items.map(item => (
+        <span key={item.label} style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#cbd5e1' }}>
+          <span style={{ width:16, height:3, borderRadius:2, background:item.color }} />
+          {item.label}
+        </span>
+      ))}
     </div>
   );
 }
