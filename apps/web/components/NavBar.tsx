@@ -11,6 +11,8 @@ const links = [
 export default function NavBar() {
   const pathname = usePathname();
 
+  if (pathname === '/') return null;
+
   return (
     <nav style={{
       background: '#0b1226',
