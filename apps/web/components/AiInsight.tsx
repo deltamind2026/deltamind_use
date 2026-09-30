@@ -98,14 +98,20 @@ export default function AiInsight({ symbol, tf, candles, marketState }: { symbol
   useEffect(() => {
     if (!candles.length) return;
     let cancelled = false;
+    // Aborting on cleanup means a superseded run (a quick symbol/timeframe switch,
+    // or React Strict Mode's mount-unmount-mount in dev) never reaches /ai/explain.
+    const ctrl = new AbortController();
+    const { signal } = ctrl;
     setState({ loading: true, data: null });
     (async () => {
       try {
         const [multi, options] = await Promise.all([
-          fetch(`${API_URL}/market/multi?symbol=${encodeURIComponent(symbol)}`).then(r => r.json()).catch(() => ({})),
-          fetch(`${API_URL}/options/chain?symbol=${encodeURIComponent(symbol)}`).then(r => r.json()).catch(() => ({})),
+          fetch(`${API_URL}/market/multi?symbol=${encodeURIComponent(symbol)}`, { signal }).then(r => r.json()).catch(() => ({})),
+          fetch(`${API_URL}/options/chain?symbol=${encodeURIComponent(symbol)}`, { signal }).then(r => r.json()).catch(() => ({})),
         ]);
+        if (cancelled) return;
         const ai = await fetch(`${API_URL}/ai/explain`, {
+          signal,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -119,11 +125,12 @@ export default function AiInsight({ symbol, tf, candles, marketState }: { symbol
         }).then(r => r.json());
         if (!cancelled) setState({ loading: false, data: parseAiExplanation(ai?.explanation) });
       } catch (err) {
+        if (cancelled) return;
         console.error('AI error:', err);
         if (!cancelled) setState({ loading: false, data: { metrics: [], fallbackText: 'AI analysis is unavailable right now.' } });
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; ctrl.abort(); };
   }, [symbol, tf, candles, marketState]);
 
   const d = state.data;

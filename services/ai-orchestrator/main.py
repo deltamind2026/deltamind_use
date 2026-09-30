@@ -61,8 +61,11 @@ def hello():
 # Dev / Testing Endpoint (Flexible Payload)
 # ===================================================
 
+# Plain `def` (not async): get_completion is a blocking OpenAI call, and inside
+# an async endpoint it would freeze the event loop so requests run one at a time.
+# FastAPI runs plain `def` endpoints in a thread pool, so these run concurrently.
 @app.post("/ai/explain")
-async def explain_structured(req: dict):
+def explain_structured(req: dict):
     try:
         chart_intel = build_chart_intel(
             asset=req.get("asset"),
@@ -175,7 +178,7 @@ async def hover_explain(data: dict):
         return {"text": "Unable to analyze"}
 
 @app.post("/ai/analyze-period")
-async def analyze_time_period(req: dict):
+def analyze_time_period(req: dict):  # plain def: see explain_structured
     from openai_client import get_completion
     
     symbol = req.get("symbol", "Unknown")

@@ -13,12 +13,14 @@ export type ChartData = {
 
 const EMPTY: ChartData = { status: 'loading', bars: [], candles: [], marketState: {} };
 
+type Loaded = ChartData & { key: string };
+
 export function useChartData(symbol: string, tf: string): ChartData {
-  const [data, setData] = useState<ChartData>(EMPTY);
+  const [data, setData] = useState<Loaded>({ ...EMPTY, key: '' });
+  const key = `${symbol}|${tf}`;
 
   useEffect(() => {
     let cancelled = false;
-    setData(d => ({ ...d, status: 'loading' }));
     fetch(`${API_URL}/market/ohlc?symbol=${encodeURIComponent(symbol)}&tf=${tf}`)
       .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
       .then(ohlc => {
@@ -28,11 +30,17 @@ export function useChartData(symbol: string, tf: string): ChartData {
           t: Math.floor(new Date(c.time).getTime() / 1000),
           o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume,
         }));
-        setData({ status: 'ready', bars, candles, marketState: ohlc.market_state || {} });
+        setData({ status: 'ready', bars, candles, marketState: ohlc.market_state || {}, key });
       })
-      .catch(() => { if (!cancelled) setData({ ...EMPTY, status: 'error' }); });
+      .catch(() => { if (!cancelled) setData({ ...EMPTY, status: 'error', key }); });
     return () => { cancelled = true; };
-  }, [symbol, tf]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
-  return data;
+  // Data belongs to the symbol/timeframe it was fetched for. Right after a switch
+  // the old bars are still here, so report 'loading' until the new ones arrive;
+  // otherwise consumers see the new tf paired with the old candles.
+  // (Old bars are still returned so the chart doesn't flash empty.)
+  const { key: loadedKey, ...rest } = data;
+  return loadedKey === key ? rest : { ...rest, status: 'loading' };
 }
