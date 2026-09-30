@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { DEFAULT_SETTINGS, IndicatorSettings, loadSettings, saveSettings } from '@/lib/ta/settings';
+import { DEFAULT_SETTINGS, IndicatorSettings, loadSettings, saveSettings, setBeginnerMode } from '@/lib/ta/settings';
 
 export default function IndicatorPanel({ onChange }:{ onChange:(s:IndicatorSettings)=>void }) {
   const [s, setS] = useState<IndicatorSettings>(DEFAULT_SETTINGS);
@@ -21,6 +21,28 @@ export default function IndicatorPanel({ onChange }:{ onChange:(s:IndicatorSetti
   return (
     <div style={card}>
       <div style={{ fontWeight: 900, marginBottom: 8 }}>Indicators</div>
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '10px 12px',
+        marginBottom: 8,
+        borderRadius: 10,
+        background: '#020617',
+        border: '1px solid #1f2a44',
+      }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>Beginner Mode</div>
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>Hides Bollinger, MACD and RSI by default</div>
+        </div>
+        <input
+          type="checkbox"
+          checked={s.beginnerMode}
+          onChange={e => upd(setBeginnerMode(s, e.target.checked))}
+        />
+      </div>
 
       <Row label="SMA">
         <Swatch color="#facc15" />

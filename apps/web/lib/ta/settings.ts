@@ -1,7 +1,12 @@
 
 export type IndicatorKey = 'SMA'|'EMA'|'VWAP'|'RSI'|'MACD'|'BOLL'|'VOLUME_PROFILE';
 
+// Advanced indicators Beginner Mode hides by default. SMA, VWAP, EMA and
+// Volume Profile stay visible either way -- only these three are toggled.
+export const BEGINNER_MODE_HIDES: IndicatorKey[] = ['BOLL', 'RSI', 'MACD'];
+
 export type IndicatorSettings = {
+  beginnerMode: boolean;
   enabled: Record<IndicatorKey, boolean>;
   params: {
     SMA: { period:number };
@@ -15,7 +20,11 @@ export type IndicatorSettings = {
 };
 
 export const DEFAULT_SETTINGS: IndicatorSettings = {
-  enabled: { SMA:true, EMA:true, VWAP:true, RSI:true, MACD:true, BOLL:true, VOLUME_PROFILE:true },
+  // New accounts start in Beginner Mode, so the advanced indicators below
+  // start hidden. An existing user's saved settings (loadSettings) always
+  // win over these defaults, so this does not change what current users see.
+  beginnerMode: true,
+  enabled: { SMA:true, EMA:true, VWAP:true, RSI:false, MACD:false, BOLL:false, VOLUME_PROFILE:true },
   params: {
     SMA:{ period:20 },
     EMA:{ period:50 },
@@ -26,6 +35,15 @@ export const DEFAULT_SETTINGS: IndicatorSettings = {
     VOLUME_PROFILE:{ binSize:2 }
   }
 };
+
+// Flips Beginner Mode and bulk-hides/reveals the advanced indicators.
+// Individual checkboxes still work normally afterward -- this is just the
+// one-click bulk action described in the Beginner Mode story.
+export function setBeginnerMode(s: IndicatorSettings, on: boolean): IndicatorSettings {
+  const enabled = { ...s.enabled };
+  for (const key of BEGINNER_MODE_HIDES) enabled[key] = !on;
+  return { ...s, beginnerMode: on, enabled };
+}
 
 const KEY = 'deltamind_indicator_settings_v52';
 
