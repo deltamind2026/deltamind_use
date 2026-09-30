@@ -1,377 +1,331 @@
 'use client';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { IChartApi, ISeriesApi, Logical } from 'lightweight-charts';
+import type { OHLCV } from '../lib/ta/series';
+import { fmtPrice } from '../lib/ta/guide';
+import type { Explanation } from './ExplainerCard';
 
-type Tool = 'none'|'trendline'|'fib'|'timewindow';
-type Pt = { x:number; y:number };
-type Trend = { a:Pt; b:Pt };
-type Fib = { hi:Pt; lo:Pt };
-type TimeWindow = { start:Pt; end:Pt };
+export type Tool = 'none' | 'line' | 'level' | 'fib' | 'period';
 
-export default function DrawingOverlay({ 
-  width, 
-  height,
-  currentPrice,
-  onDrawingComplete,
-  onTimeWindowComplete
-}: { 
-  width:number; 
-  height:number;
-  currentPrice?: number;
-  onDrawingComplete?: (analysis: string) => void;
-  onTimeWindowComplete?: (startX: number, endX: number) => void;
+type Anchor = { t: number; p: number };
+type Drawing =
+  | { kind: 'line'; a: Anchor; b: Anchor }
+  | { kind: 'level'; a: Anchor }
+  | { kind: 'fib'; a: Anchor; b: Anchor }
+  | { kind: 'period'; a: Anchor; b: Anchor };
+
+const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+const INK = { line: '#38bdf8', level: '#f472b6', fib: '#a78bfa', period: '#22d3ee', preview: '#f59e0b' };
+
+export default function DrawingOverlay({
+  chart, series, bars, storageKey, tool, onToolDone, clearToken, onExplain, onPeriod,
+}: {
+  chart: IChartApi | null;
+  series: ISeriesApi<any> | null;
+  bars: OHLCV[];
+  storageKey: string;
+  tool: Tool;
+  onToolDone: () => void;
+  clearToken: number;
+  onExplain: (e: Explanation) => void;
+  onPeriod: (startIdx: number, endIdx: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [tool, setTool] = useState<Tool>('none');
-  const [trendlines, setTrendlines] = useState<Trend[]>([]);
-  const [fibs, setFibs] = useState<Fib[]>([]);
-  const [timeWindows, setTimeWindows] = useState<TimeWindow[]>([]);
-  const [dragStart, setDragStart] = useState<Pt|null>(null);
-  const [dragNow, setDragNow] = useState<Pt|null>(null);
+  const [drawings, setDrawings] = useState<Drawing[]>([]);
+  const loadedKey = useRef<string | null>(null);
+  const drag = useRef<{ a: Anchor; b: Anchor } | null>(null);
 
-  const levels = useMemo(()=> [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1], []);
+  const indexOf = useCallback((t: number) => {
+    // bars are sorted by time; binary search for the bar at (or just before) t
+    let lo = 0, hi = bars.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (bars[mid].t <= t) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  }, [bars]);
 
-  // Load from localStorage on mount
+  /* ---------- persistence (per symbol + timeframe) ---------- */
+
   useEffect(() => {
-    const saved = localStorage.getItem('dm-drawings');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        if (data.trendlines) setTrendlines(data.trendlines);
-        if (data.fibs) setFibs(data.fibs);
-        if (data.timeWindows) setTimeWindows(data.timeWindows);
-      } catch (e) {
-        console.error('Failed to load drawings:', e);
-      }
-    }
-  }, []);
+    loadedKey.current = null;
+    let next: Drawing[] = [];
+    try { next = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch {}
+    setDrawings(Array.isArray(next) ? next : []);
+    loadedKey.current = storageKey;
+  }, [storageKey]);
 
-  // Save to localStorage whenever drawings change
   useEffect(() => {
-    localStorage.setItem('dm-drawings', JSON.stringify({ trendlines, fibs, timeWindows }));
-  }, [trendlines, fibs, timeWindows]);
+    if (loadedKey.current !== storageKey) return;
+    try { localStorage.setItem(storageKey, JSON.stringify(drawings)); } catch {}
+  }, [drawings, storageKey]);
 
-  // Convert canvas Y coordinate to approximate price
-  function yToPrice(y: number, currentPrice: number): number {
-    // Rough approximation: assume chart shows ±10% around current price
-    const priceRange = currentPrice * 0.2; // 20% total range
-    const priceHigh = currentPrice * 1.1;
-    const pricePerPixel = priceRange / height;
-    return priceHigh - (y * pricePerPixel);
-  }
+  useEffect(() => { if (clearToken) setDrawings([]); }, [clearToken]);
 
-  // Analyze a trendline
-  function analyzeTrendline(trend: Trend, currentPrice: number): string {
-    const priceA = yToPrice(trend.a.y, currentPrice);
-    const priceB = yToPrice(trend.b.y, currentPrice);
-    
-    const deltaX = trend.b.x - trend.a.x;
-    const deltaY = priceB - priceA;
-    const slope = deltaY / deltaX;
-    const angle = Math.atan(slope) * (180 / Math.PI);
-    
-    const isUpward = priceB > priceA;
-    const avgPrice = (priceA + priceB) / 2;
-    const distanceFromCurrent = ((currentPrice - avgPrice) / avgPrice * 100);
-    
-    let analysis = `**What You Drew:**\n`;
-    analysis += isUpward 
-      ? `An upward line from $${priceA.toFixed(2)} to $${priceB.toFixed(2)}\n\n`
-      : `A downward line from $${priceA.toFixed(2)} to $${priceB.toFixed(2)}\n\n`;
-    
-    analysis += `**What This Means:**\n`;
-    if (isUpward) {
-      analysis += `This line shows where the stock has been bouncing UP from (like a floor).\n`;
-      analysis += `If the price stays above this line, it suggests the stock is staying strong.\n\n`;
-    } else {
-      analysis += `This line shows where the stock has been getting stuck (like a ceiling).\n`;
-      analysis += `If the price stays below this line, it suggests the stock is struggling to go higher.\n\n`;
-    }
-    
-    analysis += `**Right Now:**\n`;
-    analysis += `Current stock price: $${currentPrice.toFixed(2)}\n`;
-    
-    if (isUpward && distanceFromCurrent > 2) {
-      analysis += `✅ Price is holding above the line - good sign! The "floor" is holding.`;
-    } else if (isUpward && distanceFromCurrent < -2) {
-      analysis += `⚠️ Price dropped below the line - the "floor" broke. This could mean the upward trend is weakening.`;
-    } else if (!isUpward && distanceFromCurrent < -2) {
-      analysis += `🔻 Price is stuck below the line - the "ceiling" is holding it down.`;
-    } else if (!isUpward && distanceFromCurrent > 2) {
-      analysis += `⚡ Price broke above the line - it finally pushed through the "ceiling"! Could be turning around.`;
-    } else {
-      analysis += `💡 Price is right near the line. Watch what happens next - will it bounce off or break through?`;
-    }
-    
-    return analysis;
-  }
+  /* ---------- coordinate conversion ---------- */
 
-  // Analyze Fibonacci levels
-  function analyzeFib(fib: Fib, currentPrice: number): string {
-    const priceHi = yToPrice(fib.hi.y, currentPrice);
-    const priceLo = yToPrice(fib.lo.y, currentPrice);
-    
-    const high = Math.max(priceHi, priceLo);
-    const low = Math.min(priceHi, priceLo);
-    const range = high - low;
-    
-    // Calculate key Fibonacci price levels
-    const fib236 = high - (range * 0.236);
-    const fib382 = high - (range * 0.382);
-    const fib500 = high - (range * 0.5);
-    const fib618 = high - (range * 0.618);
-    const fib786 = high - (range * 0.786);
-    
-    let analysis = `**What You Drew:**\n`;
-    analysis += `You marked the stock's recent high ($${high.toFixed(2)}) and low ($${low.toFixed(2)}).\n\n`;
-    
-    analysis += `**What This Shows:**\n`;
-    analysis += `When stocks move up or down, they often pause or reverse at predictable spots.\n`;
-    analysis += `These horizontal lines show where the stock might "take a breath" on its way back.\n\n`;
-    
-    analysis += `**Key Price Levels to Watch:**\n`;
-    analysis += `• $${fib236.toFixed(2)} - First potential pause spot\n`;
-    analysis += `• $${fib382.toFixed(2)} - Common bounce area\n`;
-    analysis += `• $${fib500.toFixed(2)} - Halfway back (50/50 zone)\n`;
-    analysis += `• $${fib618.toFixed(2)} - Strong support level (the "golden ratio")\n`;
-    analysis += `• $${fib786.toFixed(2)} - Last chance before going all the way back\n\n`;
-    
-    // Find nearest level
-    const levels = [
-      { name: 'first pause spot', price: fib236 },
-      { name: 'common bounce area', price: fib382 },
-      { name: '50/50 zone', price: fib500 },
-      { name: 'golden ratio level', price: fib618 },
-      { name: 'last chance level', price: fib786 }
-    ];
-    
-    const closest = levels.reduce((prev, curr) => 
-      Math.abs(curr.price - currentPrice) < Math.abs(prev.price - currentPrice) ? curr : prev
-    );
-    
-    const distanceToClosest = ((currentPrice - closest.price) / closest.price * 100);
-    
-    analysis += `**Right Now:**\n`;
-    analysis += `Current price: $${currentPrice.toFixed(2)}\n`;
-    
-    if (Math.abs(distanceToClosest) < 1) {
-      analysis += `🎯 The stock is RIGHT AT the ${closest.name} ($${closest.price.toFixed(2)})!\n`;
-      analysis += `This is a decision point - it might bounce back up or drop through to the next level.`;
-    } else if (currentPrice > closest.price) {
-      const nextResistance = levels.find(l => l.price > currentPrice);
-      if (nextResistance) {
-        analysis += `📈 Stock is moving up. Next level to watch: $${nextResistance.price.toFixed(2)} (${nextResistance.name})`;
-      } else {
-        analysis += `📈 Stock is above all the levels - showing strength!`;
-      }
-    } else {
-      const nextSupport = [...levels].reverse().find(l => l.price < currentPrice);
-      if (nextSupport) {
-        analysis += `📉 Stock is dropping. Next level where it might stop falling: $${nextSupport.price.toFixed(2)} (${nextSupport.name})`;
-      } else {
-        analysis += `📉 Stock is below all the levels - might be headed back to the original low.`;
-      }
-    }
-    
-    return analysis;
-  }
+  const toAnchor = useCallback((x: number, y: number): Anchor | null => {
+    if (!chart || !series || !bars.length) return null;
+    const logical = chart.timeScale().coordinateToLogical(x);
+    const price = series.coordinateToPrice(y);
+    if (logical === null || price === null) return null;
+    const i = Math.min(bars.length - 1, Math.max(0, Math.round(logical)));
+    return { t: bars[i].t, p: price as number };
+  }, [chart, series, bars]);
 
-  function isNear(price1: number, price2: number): boolean {
-    return Math.abs(price1 - price2) / price1 < 0.01; // Within 1%
-  }
+  const xOf = useCallback((t: number) => {
+    if (!chart) return null;
+    return chart.timeScale().logicalToCoordinate(indexOf(t) as Logical);
+  }, [chart, indexOf]);
 
-  function redraw() {
+  const yOf = useCallback((p: number) => series?.priceToCoordinate(p) ?? null, [series]);
+
+  /* ---------- rendering ---------- */
+
+  const redraw = useCallback(() => {
     const c = canvasRef.current;
-    if (!c) return;
+    if (!c || !chart || !series || !bars.length) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = c.getBoundingClientRect();
+    if (c.width !== Math.round(rect.width * dpr) || c.height !== Math.round(rect.height * dpr)) {
+      c.width = Math.round(rect.width * dpr);
+      c.height = Math.round(rect.height * dpr);
+    }
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0,0,width,height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
 
-    // Trendlines
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#60a5fa';
-    for (const t of trendlines){
-      ctx.beginPath();
-      ctx.moveTo(t.a.x, t.a.y);
-      ctx.lineTo(t.b.x, t.b.y);
-      ctx.stroke();
-    }
+    const pane = chart.paneSize();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, pane.width, pane.height);
+    ctx.clip();
+    ctx.font = '600 11px ui-sans-serif, system-ui';
 
-    // Fibonacci
-    for (const f of fibs){
-      const yHi = f.hi.y;
-      const yLo = f.lo.y;
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = '#a78bfa';
-      ctx.fillStyle = 'rgba(167,139,250,0.12)';
-      const top = Math.min(yHi, yLo);
-      const bot = Math.max(yHi, yLo);
-      ctx.fillRect(0, top, width, bot-top);
+    const all: (Drawing & { preview?: boolean })[] = [...drawings];
+    if (drag.current && tool !== 'none' && tool !== 'level') all.push({ kind: tool, ...drag.current, preview: true } as any);
 
-      ctx.font = '12px ui-sans-serif';
-      ctx.fillStyle = '#e5e7eb';
-      for (const lv of levels){
-        const y = yHi + (yLo-yHi)*lv;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-        ctx.fillText(`${Math.round(lv*1000)/10}%`, 8, y-4);
-      }
-    }
+    for (const d of all) {
+      const ink = d.preview ? INK.preview : INK[d.kind];
+      ctx.strokeStyle = ink;
+      ctx.fillStyle = ink;
+      ctx.setLineDash(d.preview ? [6, 5] : []);
 
-    // Time Windows
-    ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
-    ctx.strokeStyle = '#22d3ee';
-    ctx.lineWidth = 2;
-    for (const tw of timeWindows) {
-      const left = Math.min(tw.start.x, tw.end.x);
-      const right = Math.max(tw.start.x, tw.end.x);
-      ctx.fillRect(left, 0, right - left, height);
-      ctx.strokeRect(left, 0, right - left, height);
-
-      // Draw label at top
-      ctx.fillStyle = '#22d3ee';
-      ctx.font = 'bold 13px ui-sans-serif';
-      ctx.fillText('📅 Time Window', left + 8, 20);
-    }
-
-    // In-progress drag preview
-    if (tool !== 'none' && dragStart && dragNow){
-      ctx.setLineDash([6,6]);
-      ctx.lineWidth = 2;
-
-      if (tool === 'timewindow') {
-        ctx.fillStyle = 'rgba(34, 211, 238, 0.2)';
-        ctx.strokeStyle = '#22d3ee';
-        const left = Math.min(dragStart.x, dragNow.x);
-        const right = Math.max(dragStart.x, dragNow.x);
-        ctx.fillRect(left, 0, right - left, height);
-        ctx.strokeRect(left, 0, right - left, height);
-      } else {
-        ctx.strokeStyle = '#f59e0b';
-        ctx.beginPath();
-        ctx.moveTo(dragStart.x, dragStart.y);
-        ctx.lineTo(dragNow.x, dragNow.y);
-        ctx.stroke();
+      if (d.kind === 'level') {
+        const y = yOf(d.a.p);
+        if (y === null) continue;
+        ctx.lineWidth = 1.5;
+        line(ctx, 0, y, pane.width, y);
+        label(ctx, `Your level ${fmtPrice(d.a.p)}`, 8, y - 6, ink);
+        continue;
       }
 
-      ctx.setLineDash([]);
+      const xa = xOf(d.a.t), xb = xOf(d.b.t), ya = yOf(d.a.p), yb = yOf(d.b.p);
+      if (xa === null || xb === null || ya === null || yb === null) continue;
+
+      if (d.kind === 'line') {
+        ctx.lineWidth = 2;
+        line(ctx, xa, ya, xb, yb);
+        if (!d.preview && xb !== xa) {
+          // faint extension shows where the line is heading
+          const [x0, y0, x1, y1] = xa < xb ? [xa, ya, xb, yb] : [xb, yb, xa, ya];
+          const slope = (y1 - y0) / (x1 - x0);
+          ctx.setLineDash([4, 4]);
+          ctx.globalAlpha = 0.5;
+          line(ctx, x1, y1, pane.width, y1 + slope * (pane.width - x1));
+          ctx.globalAlpha = 1;
+        }
+      } else if (d.kind === 'fib') {
+        const hi = Math.max(d.a.p, d.b.p), lo = Math.min(d.a.p, d.b.p);
+        const left = Math.min(xa, xb);
+        ctx.globalAlpha = 0.08;
+        ctx.fillRect(left, Math.min(ya, yb), pane.width - left, Math.abs(yb - ya));
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1;
+        for (const lv of FIB_LEVELS) {
+          const price = hi - (hi - lo) * lv;
+          const y = yOf(price);
+          if (y === null) continue;
+          line(ctx, left, y, pane.width, y);
+          label(ctx, `${(lv * 100).toFixed(1)}%  ${fmtPrice(price)}`, left + 4, y - 4, ink);
+        }
+      } else if (d.kind === 'period') {
+        const left = Math.min(xa, xb), w = Math.abs(xb - xa);
+        ctx.globalAlpha = 0.12;
+        ctx.fillRect(left, 0, w, pane.height);
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(left, 0, w, pane.height);
+        label(ctx, 'Explained period', left + 6, 16, ink);
+      }
     }
-  }
+    ctx.restore();
+  }, [chart, series, bars, drawings, tool, xOf, yOf]);
 
-  useEffect(()=>{ redraw(); }, [trendlines, fibs, timeWindows, dragStart, dragNow, tool, width, height]);
-
-  function getCanvasPoint(e: React.MouseEvent<HTMLCanvasElement>): Pt {
-    const canvas = e.target as HTMLCanvasElement;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
+  // Keep drawings pinned to the data while the chart scrolls, zooms or resizes.
+  useEffect(() => {
+    if (!chart) return;
+    let raf = 0;
+    const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(redraw); };
+    const ts = chart.timeScale();
+    ts.subscribeVisibleLogicalRangeChange(schedule);
+    ts.subscribeSizeChange(schedule);
+    chart.subscribeCrosshairMove(schedule);
+    schedule();
+    return () => {
+      cancelAnimationFrame(raf);
+      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      ts.unsubscribeSizeChange(schedule);
+      chart.unsubscribeCrosshairMove(schedule);
     };
+  }, [chart, redraw]);
+
+  /* ---------- pointer handling ---------- */
+
+  function point(e: React.PointerEvent<HTMLCanvasElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    return toAnchor(e.clientX - r.left, e.clientY - r.top);
   }
 
-  function onDown(e:React.MouseEvent<HTMLCanvasElement>) {
-    const p = getCanvasPoint(e);
-    setDragStart(p);
-    setDragNow(p);
+  function onDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const a = point(e);
+    if (!a) return;
+    if (tool === 'level') {
+      const d: Drawing = { kind: 'level', a };
+      setDrawings(prev => [...prev, d]);
+      onExplain(explainLevel(d.a.p, bars));
+      onToolDone();
+      return;
+    }
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { a, b: a };
+    redraw();
   }
-  function onMove(e:React.MouseEvent<HTMLCanvasElement>) {
-    if (!dragStart) return;
-    setDragNow(getCanvasPoint(e));
+
+  function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drag.current) return;
+    const b = point(e);
+    if (b) { drag.current.b = b; redraw(); }
   }
+
   function onUp() {
-    if (!dragStart || !dragNow) { setDragStart(null); setDragNow(null); return; }
-    
-    if (tool === 'trendline') {
-      const newTrend = { a: dragStart, b: dragNow };
-      setTrendlines(prev => [...prev, newTrend]);
-      
-      if (currentPrice && onDrawingComplete) {
-        const analysis = analyzeTrendline(newTrend, currentPrice);
-        onDrawingComplete(analysis);
-      }
-    }
-    
-    if (tool === 'fib') {
-      const newFib = { hi: dragStart, lo: dragNow };
-      setFibs(prev => [...prev, newFib]);
-      
-      if (currentPrice && onDrawingComplete) {
-        const analysis = analyzeFib(newFib, currentPrice);
-        onDrawingComplete(analysis);
-      }
-    }
-    
-    if (tool === 'timewindow') {
-      const newWindow = { start: dragStart, end: dragNow };
-      setTimeWindows(prev => [...prev, newWindow]);
+    const d = drag.current;
+    drag.current = null;
+    if (!d || tool === 'none' || tool === 'level') return;
+    const ia = indexOf(d.a.t), ib = indexOf(d.b.t);
 
-      if (onTimeWindowComplete) {
-        const startX = Math.min(dragStart.x, dragNow.x);
-        const endX = Math.max(dragStart.x, dragNow.x);
-        onTimeWindowComplete(startX, endX);
+    if (tool === 'period') {
+      if (Math.abs(ib - ia) < 2) {
+        onExplain({ kind: 'period', title: 'Pick a wider period', body: 'Drag across at least a few candles to explain what happened.' });
+      } else {
+        const [a, b] = ia < ib ? [d.a, d.b] : [d.b, d.a];
+        setDrawings(prev => [...prev.filter(x => x.kind !== 'period'), { kind: 'period', a, b }]);
+        onPeriod(Math.min(ia, ib), Math.max(ia, ib));
       }
+    } else if (ia !== ib || d.a.p !== d.b.p) {
+      const next: Drawing = { kind: tool, a: d.a, b: d.b };
+      setDrawings(prev => [...prev, next]);
+      onExplain(tool === 'line' ? explainLine(d.a, d.b, ia, ib, bars) : explainFib(d.a.p, d.b.p, bars));
     }
-
-    setDragStart(null);
-    setDragNow(null);
+    onToolDone();
+    redraw();
   }
 
   return (
-    <div style={{ position:'absolute', inset:0, pointerEvents:'none', zIndex: 10 }}>
-      <div style={{ position:'absolute', top:12, left:12, display:'flex', gap:8, zIndex: 50, pointerEvents:'auto' }}>
-        <button onClick={()=>{
-          setTool('none');
-          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'none' } }));
-        }} style={btn(tool==='none')}>Cursor</button>
-        
-        <button onClick={()=>{
-          setTool('trendline');
-          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'trendline' } }));
-        }} style={btn(tool==='trendline')}>Trendline</button>
-        
-        <button onClick={()=>{
-          setTool('fib');
-          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'fib' } }));
-        }} style={btn(tool==='fib')}>Fib</button>
-        
-        <button onClick={()=>{
-          setTool('timewindow');
-          window.dispatchEvent(new CustomEvent("dm-drawing-tool-change", { detail: { tool: 'timewindow' } }));
-        }} style={btn(tool==='timewindow')}>Time Window</button>
-        
-        <button onClick={()=>{setTrendlines([]); setFibs([]); setTimeWindows([]);}} style={btn(false)}>Clear</button>
-      </div>
-
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        onMouseDown={onDown}
-        onMouseMove={onMove}
-        onMouseUp={onUp}
-        onMouseLeave={onUp}
-        style={{ 
-          width:'100%', 
-          height:'100%', 
-          cursor: tool==='none'?'default':'crosshair',
-          pointerEvents: tool === 'none' ? 'none' : 'auto'
-        }}
-      />
-    </div>
+    <canvas
+      ref={canvasRef}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onUp}
+      style={{
+        position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 5,
+        cursor: tool === 'none' ? 'default' : 'crosshair',
+        pointerEvents: tool === 'none' ? 'none' : 'auto',
+        touchAction: tool === 'none' ? 'auto' : 'none',
+      }}
+    />
   );
 }
 
-function btn(active:boolean){
-  return {
-    padding:'8px 10px',
-    borderRadius: 999,
-    background: active ? '#2563eb' : '#0b1226',
-    border: '1px solid #1f2a44',
-    color:'#e5e7eb',
-    fontWeight: 800,
-    fontSize: 12
-  } as React.CSSProperties;
+/* ---------------- canvas helpers ---------------- */
+
+function line(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) {
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+}
+
+function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string) {
+  const w = ctx.measureText(text).width;
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(2,6,23,0.85)';
+  ctx.fillRect(x - 3, y - 11, w + 6, 15);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+/* ---------------- plain-language explanations ---------------- */
+
+function explainLine(a: Anchor, b: Anchor, ia: number, ib: number, bars: OHLCV[]): Explanation {
+  const [p0, i0, p1, i1] = ia <= ib ? [a.p, ia, b.p, ib] : [b.p, ib, a.p, ia];
+  const last = bars.length - 1;
+  const close = bars[last].c;
+  const slope = i1 === i0 ? 0 : (p1 - p0) / (i1 - i0);
+  const lineNow = p1 + slope * (last - i1);
+  const gap = ((close - lineNow) / lineNow) * 100;
+  const rising = slope > 0;
+
+  const body = [
+    `**What you drew:** a ${rising ? 'rising' : slope < 0 ? 'falling' : 'flat'} line from ${fmtPrice(p0)} to ${fmtPrice(p1)}.`,
+    rising
+      ? 'Rising lines drawn under the lows act like a **floor**: buyers have been stepping in at higher and higher prices.'
+      : 'Falling lines drawn over the highs act like a **ceiling**: sellers have been stepping in at lower and lower prices.',
+    `**Right now:** if you extend the line to today it sits near ${fmtPrice(lineNow)}, and the price is ${fmtPrice(close)} (${Math.abs(gap).toFixed(1)}% ${gap >= 0 ? 'above' : 'below'} it).`,
+    Math.abs(gap) < 1
+      ? 'The price is right at your line. Watch whether it bounces off it or breaks through.'
+      : rising
+        ? (gap > 0 ? 'The floor is holding so far.' : 'The price has dropped through the floor, which can mean the upward trend is weakening.')
+        : (gap < 0 ? 'The ceiling is holding so far.' : 'The price has pushed through the ceiling, which can mean the downward trend is losing steam.'),
+  ].join('\n\n');
+  return { kind: 'drawing', title: 'Your trend line', body };
+}
+
+function explainLevel(level: number, bars: OHLCV[]): Explanation {
+  const close = bars[bars.length - 1].c;
+  const touches = bars.filter(b => b.l <= level && b.h >= level).length;
+  const gap = ((close - level) / level) * 100;
+  const role = close >= level ? 'support (a floor below the price)' : 'resistance (a ceiling above the price)';
+  const body = [
+    `**What you marked:** ${fmtPrice(level)}. The price is currently ${fmtPrice(close)}, ${Math.abs(gap).toFixed(1)}% ${gap >= 0 ? 'above' : 'below'} it.`,
+    `**History:** the price traded through this level on **${touches}** of the ${bars.length} candles on this chart.`,
+    touches >= 5
+      ? `Prices that keep coming back to the same level are worth watching. This one could act as ${role}.`
+      : 'The price has not spent much time here, so this level may not matter much yet.',
+  ].join('\n\n');
+  return { kind: 'drawing', title: 'Your price level', body };
+}
+
+function explainFib(pa: number, pb: number, bars: OHLCV[]): Explanation {
+  const hi = Math.max(pa, pb), lo = Math.min(pa, pb), range = hi - lo;
+  const close = bars[bars.length - 1].c;
+  const levels = [
+    { name: '23.6%, a shallow pullback', price: hi - range * 0.236 },
+    { name: '38.2%, a common bounce area', price: hi - range * 0.382 },
+    { name: '50%, halfway back', price: hi - range * 0.5 },
+    { name: '61.8%, the "golden ratio" level', price: hi - range * 0.618 },
+    { name: '78.6%, a deep pullback', price: hi - range * 0.786 },
+  ];
+  const nearest = levels.reduce((m, l) => (Math.abs(l.price - close) < Math.abs(m.price - close) ? l : m));
+  const body = [
+    `**What you drew:** a move between ${fmtPrice(lo)} and ${fmtPrice(hi)}.`,
+    'After a big move, prices often "take a breath" and give back part of it. These lines mark the spots where traders commonly expect that pullback to pause.',
+    levels.map(l => `• ${fmtPrice(l.price)}: ${l.name}`).join('\n'),
+    `**Right now:** the price (${fmtPrice(close)}) is closest to the ${nearest.name.split(',')[0]} level at ${fmtPrice(nearest.price)}.`,
+  ].join('\n\n');
+  return { kind: 'drawing', title: 'Pullback levels', body };
 }

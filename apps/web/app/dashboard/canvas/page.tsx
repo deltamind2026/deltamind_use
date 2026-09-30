@@ -1,14 +1,22 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import IndicatorPanel from '@/components/IndicatorPanel';
 import ProChart from '@/components/ProChart';
-import type { IndicatorSettings } from '@/lib/ta/settings';
-import { DEFAULT_SETTINGS } from '@/lib/ta/settings';
-import { Suspense } from 'react';
-
+import AiInsight from '@/components/AiInsight';
+import type { ChartType, IndicatorKey, IndicatorSettings } from '@/lib/ta/settings';
+import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from '@/lib/ta/settings';
+import { GUIDE, computeIndicators, fmtPrice, readIndicator, summarize } from '@/lib/ta/guide';
+import { API_URL, useChartData } from '@/lib/useChartData';
 
 const DEFAULT_SYMBOLS = ['NVDA', 'AAPL', 'TSLA', 'NFLX', 'HOOD', 'SPY'];
+
+const TIMEFRAMES = [
+  { value: '1D', label: 'Daily' },
+  { value: '4H', label: '4 hours' },
+  { value: '1H', label: '1 hour' },
+  { value: '15m', label: '15 min' },
+];
 
 function CanvasPageInner(){
   const searchParams = useSearchParams();
@@ -20,6 +28,26 @@ function CanvasPageInner(){
   const [showManageStocks, setShowManageStocks] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
   const [searchError, setSearchError] = useState('');
+
+  const data = useChartData(symbol, tf);
+
+  // Settings are stored exactly as typed; the chart always uses a cleaned-up copy.
+  useEffect(() => { setSettings(loadSettings()); }, []);
+  const updateSettings = (s: IndicatorSettings) => { setSettings(s); saveSettings(s); };
+  const clean = useMemo(() => sanitizeSettings(settings), [settings]);
+
+  const computed = useMemo(
+    () => (data.bars.length ? computeIndicators(data.bars, clean) : null),
+    // only the params affect the math; toggling an indicator shouldn't recompute everything
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.bars, JSON.stringify(clean.params)]
+  );
+  const readings = useMemo(() => {
+    const out: Partial<Record<IndicatorKey, ReturnType<typeof readIndicator>>> = {};
+    if (computed) for (const g of GUIDE) out[g.key] = readIndicator(g.key, data.bars, computed, clean, tf);
+    return out;
+  }, [computed, data.bars, clean, tf]);
+  const summary = useMemo(() => summarize(data.bars, tf), [data.bars, tf]);
 
   // Load custom symbols from localStorage
   useEffect(() => {
@@ -40,7 +68,7 @@ function CanvasPageInner(){
   // Add new symbol
   const handleAddSymbol = async () => {
     const sym = newSymbol.trim().toUpperCase();
-    
+
     if (!sym) {
       setSearchError('Please enter a symbol');
       return;
@@ -52,16 +80,15 @@ function CanvasPageInner(){
     }
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8040';
       const res = await fetch(`${API_URL}/market/ohlc?symbol=${sym}&tf=1D&limit=1`);
-      
+
       if (!res.ok) {
         setSearchError('Symbol not found or invalid');
         return;
       }
 
       const data = await res.json();
-      
+
       if (!data.candles || data.candles.length === 0) {
         setSearchError('No data available for this symbol');
         return;
@@ -94,68 +121,61 @@ function CanvasPageInner(){
     setShowManageStocks(false);
   };
 
-  const allSymbols = [...DEFAULT_SYMBOLS, ...customSymbols];
+  const up = (summary?.change ?? 0) >= 0;
+  const periodUp = (summary?.periodChange ?? 0) >= 0;
 
   return (
-    <div style={{ padding: 24, color:'#e5e7eb', display:'grid', gap:12 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'end', flexWrap:'wrap', gap:10 }}>
-        <div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>
-            Pro Chart Canvas — <span style={{ color: '#60a5fa' }}>{symbol}</span>
+    <div style={{ padding: '20px 24px 32px', color:'#e5e7eb', display:'grid', gap:16, maxWidth: 1600, margin: '0 auto' }}>
+      <style>{`
+        .dm-canvas-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+        @media (max-width: 1100px) { .dm-canvas-grid { grid-template-columns: minmax(0, 1fr); } }
+      `}</style>
+
+      {/* Header: what am I looking at, and how is it doing? */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', flexWrap:'wrap', gap:16 }}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={symbol} onChange={e=>setSymbol(e.target.value)} style={sel} aria-label="Stock">
+              {DEFAULT_SYMBOLS.map(sym => (
+                <option key={sym} value={sym}>{sym}</option>
+              ))}
+              {customSymbols.length > 0 && <option disabled>──────────</option>}
+              {customSymbols.map(sym => (
+                <option key={sym} value={sym}>★ {sym}</option>
+              ))}
+            </select>
+            <button onClick={() => setShowAddSymbol(!showAddSymbol)} style={ghostBtn}>+ Add stock</button>
+            {customSymbols.length > 0 && (
+              <button onClick={() => setShowManageStocks(!showManageStocks)} style={ghostBtn}>
+                Manage ({customSymbols.length})
+              </button>
+            )}
           </div>
-          <div style={{ color:'#94a3b8' }}>Drawings + indicator config + volume profile</div>
-        </div>
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-          <select value={symbol} onChange={e=>setSymbol(e.target.value)} style={sel}>
-            {DEFAULT_SYMBOLS.map(sym => (
-              <option key={sym} value={sym}>{sym}</option>
-            ))}
-            {customSymbols.length > 0 && <option disabled>──────────</option>}
-            {customSymbols.map(sym => (
-              <option key={sym} value={sym}>★ {sym}</option>
-            ))}
-          </select>
-          
-          <button 
-            onClick={() => setShowAddSymbol(!showAddSymbol)}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 12,
-              background: '#1e40af',
-              border: 'none',
-              color: '#e5e7eb',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 14
-            }}
-          >
-            + Add Stock
-          </button>
-
-          {customSymbols.length > 0 && (
-            <button 
-              onClick={() => setShowManageStocks(!showManageStocks)}
-              style={{
-                padding: '10px 14px',
-                borderRadius: 12,
-                background: '#374151',
-                border: 'none',
-                color: '#e5e7eb',
-                fontWeight: 800,
-                cursor: 'pointer',
-                fontSize: 14
-              }}
-            >
-              Manage ({customSymbols.length})
-            </button>
+          {summary ? (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 34, fontWeight: 900, color: '#f8fafc', letterSpacing: -0.5 }}>{fmtPrice(summary.price)}</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: up ? '#22c55e' : '#ef4444' }}>
+                {up ? '▲' : '▼'} {Math.abs(summary.change).toFixed(2)}%
+              </span>
+              <span style={{ fontSize: 14, color: '#94a3b8' }}>
+                {periodUp ? 'Up' : 'Down'} <b style={{ color: periodUp ? '#4ade80' : '#f87171' }}>{Math.abs(summary.periodChange).toFixed(1)}%</b> {summary.periodLabel}
+                {' · '}range {fmtPrice(summary.low)} – {fmtPrice(summary.high)}
+              </span>
+            </div>
+          ) : (
+            <div style={{ fontSize: 14, color: data.status === 'error' ? '#f87171' : '#64748b', minHeight: 41, display: 'flex', alignItems: 'center' }}>
+              {data.status === 'error' ? `Couldn't load ${symbol}. Is the market service running?` : `Loading ${symbol}…`}
+            </div>
           )}
+        </div>
 
-          <select value={tf} onChange={e=>setTf(e.target.value)} style={sel}>
-            <option value="1D">1D</option>
-            <option value="4H">4H</option>
-            <option value="1H">1H</option>
-            <option value="15m">15m</option>
-          </select>
+        <div role="group" aria-label="Timeframe" style={{ display: 'inline-flex', background: '#0b1226', border: '1px solid #1f2a44', borderRadius: 12, padding: 3 }}>
+          {TIMEFRAMES.map(t => (
+            <button key={t.value} onClick={() => setTf(t.value)} style={{
+              padding: '7px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 800,
+              background: tf === t.value ? '#1e3a8a' : 'transparent', color: tf === t.value ? '#e0e7ff' : '#94a3b8',
+            }}>{t.label}</button>
+          ))}
         </div>
       </div>
 
@@ -237,11 +257,11 @@ function CanvasPageInner(){
           padding: 16,
           maxWidth: 500
         }}>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: 12 
+            marginBottom: 12
           }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>
               Your Custom Stocks ({customSymbols.length})
@@ -279,9 +299,9 @@ function CanvasPageInner(){
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 16, fontWeight: 700 }}>★ {sym}</span>
                   {symbol === sym && (
-                    <span style={{ 
-                      fontSize: 11, 
-                      color: '#22c55e', 
+                    <span style={{
+                      fontSize: 11,
+                      color: '#22c55e',
                       background: '#022c22',
                       padding: '2px 6px',
                       borderRadius: 4,
@@ -328,12 +348,22 @@ function CanvasPageInner(){
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'360px 1fr', gap:12 }}>
-        <IndicatorPanel onChange={setSettings} />
-        <ProChart symbol={symbol} tf={tf} settings={settings} />
-      </div>
-      <div style={{ fontSize: 12, color:'#94a3b8' }}>
-        Tip: use Trendline/Fib tools (top-left of chart) → drag to draw. Indicators persist in localStorage.
+      <div className="dm-canvas-grid">
+        <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
+          <ProChart
+            symbol={symbol}
+            tf={tf}
+            bars={data.bars}
+            computed={computed}
+            settings={clean}
+            marketState={data.marketState}
+            onChartType={(chartType: ChartType) => updateSettings({ ...settings, chartType })}
+          />
+          {data.status === 'ready' && (
+            <AiInsight symbol={symbol} tf={tf} candles={data.candles} marketState={data.marketState} />
+          )}
+        </div>
+        <IndicatorPanel settings={settings} onChange={updateSettings} readings={readings} tf={tf} />
       </div>
     </div>
   );
@@ -347,11 +377,23 @@ export default function CanvasPage() {
   );
 }
 
-const sel: any = { 
-  padding:'10px 12px', 
-  borderRadius: 12, 
-  background:'#0b1226', 
-  border:'1px solid #1f2a44', 
-  color:'#e5e7eb', 
-  fontWeight: 800 
+const sel: React.CSSProperties = {
+  padding:'8px 12px',
+  borderRadius: 10,
+  background:'#0b1226',
+  border:'1px solid #1f2a44',
+  color:'#e5e7eb',
+  fontWeight: 900,
+  fontSize: 16,
+};
+
+const ghostBtn: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: 10,
+  background: 'transparent',
+  border: '1px solid #1f2a44',
+  color: '#cbd5e1',
+  fontWeight: 700,
+  cursor: 'pointer',
+  fontSize: 13,
 };

@@ -1,51 +1,84 @@
+export type IndicatorKey = 'TREND' | 'RANGE' | 'VOLUME' | 'MOMENTUM' | 'MACD' | 'VWAP';
+export type ChartType = 'line' | 'candles';
 
-export type IndicatorKey = 'SMA'|'EMA'|'VWAP'|'RSI'|'MACD'|'BOLL'|'VOLUME_PROFILE';
-
-// Advanced indicators Beginner Mode hides by default. SMA, VWAP, EMA and
-// Volume Profile stay visible either way -- only these three are toggled.
-export const BEGINNER_MODE_HIDES: IndicatorKey[] = ['BOLL', 'RSI', 'MACD'];
+// Advanced helpers Beginner Mode hides: Normal range (Bollinger), Momentum (RSI)
+// and Momentum shifts (MACD). The others stay as they are either way.
+export const BEGINNER_MODE_HIDES: IndicatorKey[] = ['RANGE', 'MOMENTUM', 'MACD'];
 
 export type IndicatorSettings = {
   beginnerMode: boolean;
+  chartType: ChartType;
   enabled: Record<IndicatorKey, boolean>;
   params: {
-    SMA: { period:number };
-    EMA: { period:number };
+    TREND: { fast: number; slow: number; kind: 'simple' | 'exponential' };
+    RANGE: { period: number; stdev: number };
+    VOLUME: { avg: number };
+    MOMENTUM: { period: number };
+    MACD: { fast: number; slow: number; signal: number };
     VWAP: {};
-    RSI: { period:number };
-    MACD: { fast:number; slow:number; signal:number };
-    BOLL: { period:number; stdev:number };
-    VOLUME_PROFILE: { binSize:number };
   };
 };
 
+// Beginners start with a clean chart: price + one trend view + trading activity.
 export const DEFAULT_SETTINGS: IndicatorSettings = {
-  // New accounts start in Beginner Mode, so the advanced indicators below
-  // start hidden. An existing user's saved settings (loadSettings) always
-  // win over these defaults, so this does not change what current users see.
   beginnerMode: true,
-  enabled: { SMA:true, EMA:true, VWAP:true, RSI:false, MACD:false, BOLL:false, VOLUME_PROFILE:true },
+  chartType: 'line',
+  enabled: { TREND: true, RANGE: false, VOLUME: true, MOMENTUM: false, MACD: false, VWAP: false },
   params: {
-    SMA:{ period:20 },
-    EMA:{ period:50 },
-    VWAP:{},
-    RSI:{ period:14 },
-    MACD:{ fast:12, slow:26, signal:9 },
-    BOLL:{ period:20, stdev:2 },
-    VOLUME_PROFILE:{ binSize:2 }
-  }
+    TREND: { fast: 20, slow: 50, kind: 'simple' },
+    RANGE: { period: 20, stdev: 2 },
+    VOLUME: { avg: 20 },
+    MOMENTUM: { period: 14 },
+    MACD: { fast: 12, slow: 26, signal: 9 },
+    VWAP: {},
+  },
 };
 
-// Flips Beginner Mode and bulk-hides/reveals the advanced indicators.
-// Individual checkboxes still work normally afterward -- this is just the
-// one-click bulk action described in the Beginner Mode story.
+// Flips Beginner Mode and bulk-hides/reveals the advanced helpers.
+// Individual switches still work normally afterward.
 export function setBeginnerMode(s: IndicatorSettings, on: boolean): IndicatorSettings {
   const enabled = { ...s.enabled };
   for (const key of BEGINNER_MODE_HIDES) enabled[key] = !on;
   return { ...s, beginnerMode: on, enabled };
 }
 
-const KEY = 'deltamind_indicator_settings_v52';
+const KEY = 'deltamind_chart_settings_v6';
+
+const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+// Typed-in numbers can be 0, blank or huge; keep every period in a range the math can handle.
+export function sanitizeSettings(s: IndicatorSettings): IndicatorSettings {
+  const d = DEFAULT_SETTINGS.params;
+  const p = s.params;
+  const stdev = Number(p.RANGE.stdev);
+  return {
+    beginnerMode: s.beginnerMode !== false,
+    chartType: s.chartType === 'candles' ? 'candles' : 'line',
+    enabled: { ...DEFAULT_SETTINGS.enabled, ...s.enabled },
+    params: {
+      TREND: {
+        fast: clampInt(p.TREND.fast, 2, 400, d.TREND.fast),
+        slow: clampInt(p.TREND.slow, 2, 400, d.TREND.slow),
+        kind: p.TREND.kind === 'exponential' ? 'exponential' : 'simple',
+      },
+      RANGE: {
+        period: clampInt(p.RANGE.period, 2, 200, d.RANGE.period),
+        stdev: Number.isFinite(stdev) && stdev > 0 ? Math.min(stdev, 5) : d.RANGE.stdev,
+      },
+      VOLUME: { avg: clampInt(p.VOLUME.avg, 2, 200, d.VOLUME.avg) },
+      MOMENTUM: { period: clampInt(p.MOMENTUM.period, 2, 100, d.MOMENTUM.period) },
+      MACD: {
+        fast: clampInt(p.MACD.fast, 2, 100, d.MACD.fast),
+        slow: clampInt(p.MACD.slow, 2, 200, d.MACD.slow),
+        signal: clampInt(p.MACD.signal, 2, 100, d.MACD.signal),
+      },
+      VWAP: {},
+    },
+  };
+}
 
 export function loadSettings(): IndicatorSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
@@ -53,7 +86,9 @@ export function loadSettings(): IndicatorSettings {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SETTINGS, ...parsed, enabled:{...DEFAULT_SETTINGS.enabled, ...(parsed.enabled||{})}, params:{...DEFAULT_SETTINGS.params, ...(parsed.params||{})} };
+    const params: any = { ...DEFAULT_SETTINGS.params };
+    for (const k of Object.keys(params)) params[k] = { ...params[k], ...(parsed.params?.[k] || {}) };
+    return sanitizeSettings({ ...DEFAULT_SETTINGS, ...parsed, enabled: { ...DEFAULT_SETTINGS.enabled, ...(parsed.enabled || {}) }, params });
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -61,5 +96,7 @@ export function loadSettings(): IndicatorSettings {
 
 export function saveSettings(s: IndicatorSettings) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(KEY, JSON.stringify(s));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {}
 }
