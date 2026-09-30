@@ -505,11 +505,18 @@ export default function ProChart({
         />
       </div>
 
-      {/* RSI and MACD panels */}
-      <PanelLegend title="RSI" items={rsiLegend} />
-      <div ref={rsiRef}/>
-      <PanelLegend title="MACD" items={macdLegend} />
-      <div ref={macdRef}/>
+      {/* RSI and MACD panels -- hide the whole panel (legend + chart pane),
+          not just the line inside it, when the indicator is toggled off.
+          The visibility effect above only hides the series, which left an
+          empty titled pane behind. */}
+      <div style={{ display: settings.enabled.RSI ? 'block' : 'none' }}>
+        <PanelLegend title="RSI" items={rsiLegend} />
+        <div ref={rsiRef}/>
+      </div>
+      <div style={{ display: settings.enabled.MACD ? 'block' : 'none' }}>
+        <PanelLegend title="MACD" items={macdLegend} />
+        <div ref={macdRef}/>
+      </div>
       
       {/* Hover AI tooltip */}
       <HoverAI/>
