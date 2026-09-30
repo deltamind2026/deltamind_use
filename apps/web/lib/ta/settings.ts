@@ -1,9 +1,9 @@
 export type IndicatorKey = 'TREND' | 'RANGE' | 'VOLUME' | 'MOMENTUM' | 'MACD' | 'VWAP';
 export type ChartType = 'line' | 'candles';
 
-// Advanced helpers Beginner Mode hides: Normal range (Bollinger), Momentum (RSI)
-// and Momentum shifts (MACD). The others stay as they are either way.
-export const BEGINNER_MODE_HIDES: IndicatorKey[] = ['RANGE', 'MOMENTUM', 'MACD'];
+// Beginner Mode hides every "when you're ready for more" helper: Normal range
+// (Bollinger), Momentum (RSI), Average price paid (VWAP) and Momentum shifts (MACD).
+export const BEGINNER_MODE_HIDES: IndicatorKey[] = ['RANGE', 'MOMENTUM', 'VWAP', 'MACD'];
 
 export type IndicatorSettings = {
   beginnerMode: boolean;
@@ -22,7 +22,7 @@ export type IndicatorSettings = {
 // Beginners start with a clean chart: price + one trend view + trading activity.
 export const DEFAULT_SETTINGS: IndicatorSettings = {
   beginnerMode: true,
-  chartType: 'line',
+  chartType: 'candles',
   enabled: { TREND: true, RANGE: false, VOLUME: true, MOMENTUM: false, MACD: false, VWAP: false },
   params: {
     TREND: { fast: 20, slow: 50, kind: 'simple' },
@@ -56,7 +56,7 @@ export function sanitizeSettings(s: IndicatorSettings): IndicatorSettings {
   const stdev = Number(p.RANGE.stdev);
   return {
     beginnerMode: s.beginnerMode !== false,
-    chartType: s.chartType === 'candles' ? 'candles' : 'line',
+    chartType: s.chartType === 'line' ? 'line' : 'candles',
     enabled: { ...DEFAULT_SETTINGS.enabled, ...s.enabled },
     params: {
       TREND: {

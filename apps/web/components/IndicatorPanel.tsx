@@ -23,26 +23,37 @@ export default function IndicatorPanel({
   const setParams = <K extends IndicatorKey>(k: K, v: Partial<IndicatorSettings['params'][K]>) =>
     onChange({ ...settings, params: { ...settings.params, [k]: { ...settings.params[k], ...v } } });
 
-  const group = (level: GuideEntry['level']) => GUIDE.filter(g => g.level === level).map(g => (
-    <Card key={g.key} g={g} on={settings.enabled[g.key]} reading={readings[g.key]} onToggle={() => toggle(g.key)}>
-      <Params k={g.key} s={settings} set={setParams} tf={tf} />
-    </Card>
-  ));
+  // Only one helper is expanded at a time so the panel stays short.
+  const [open, setOpen] = React.useState<IndicatorKey | null>(null);
+
+  const group = (level: GuideEntry['level']) => (
+    <div style={{ background: '#0b1226', border: '1px solid #1f2a44', borderRadius: 14, overflow: 'hidden' }}>
+      {GUIDE.filter(g => g.level === level).map((g, i) => (
+        <Row key={g.key} g={g} first={i === 0} on={settings.enabled[g.key]} reading={readings[g.key]}
+          expanded={open === g.key} onExpand={() => setOpen(open === g.key ? null : g.key)} onToggle={() => toggle(g.key)}>
+          <Params k={g.key} s={settings} set={setParams} tf={tf} />
+        </Row>
+      ))}
+    </div>
+  );
 
   return (
-    <aside style={{ display: 'grid', gap: 10, alignContent: 'start' }}>
-      <div style={{ padding: '2px 4px' }}>
-        <div style={{ fontWeight: 900, fontSize: 16, color: '#f1f5f9' }}>Chart helpers</div>
-        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2, lineHeight: 1.45 }}>
-          Turn one on to add it to the chart. Each one tells you what it's showing right now.
-        </div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0b1226', border: '1px solid #1f2a44', borderRadius: 14, padding: '10px 12px' }}>
-        <Toggle on={settings.beginnerMode} onClick={() => onChange(setBeginnerMode(settings, !settings.beginnerMode))} label="Beginner Mode" />
+    <aside className="dm-helpers" style={{ display: 'grid', gap: 8, alignContent: 'start' }}>
+      <style>{`
+        @media (min-width: 1101px) {
+          .dm-helpers { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+        }
+      `}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '2px 4px' }}>
         <div>
-          <div style={{ fontWeight: 800, fontSize: 14, color: '#e5e7eb' }}>Beginner Mode</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>Hides Normal range, Momentum and Momentum shifts</div>
+          <div style={{ fontWeight: 900, fontSize: 16, color: '#f1f5f9' }}>Chart helpers</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Tap a name to learn what it means.</div>
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: '#cbd5e1', cursor: 'pointer' }}
+          title="Hides Normal range, Momentum, Average price paid and Momentum shifts">
+          Beginner
+          <Toggle on={settings.beginnerMode} onClick={() => onChange(setBeginnerMode(settings, !settings.beginnerMode))} label="Beginner Mode" />
+        </label>
       </div>
       <GroupLabel>Start here</GroupLabel>
       {group('basic')}
@@ -53,45 +64,54 @@ export default function IndicatorPanel({
 }
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.7, textTransform: 'uppercase', color: '#64748b', padding: '6px 4px 0' }}>{children}</div>;
+  return <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.7, textTransform: 'uppercase', color: '#64748b', padding: '4px 4px 0' }}>{children}</div>;
 }
 
-function Card({ g, on, reading, onToggle, children }: {
-  g: GuideEntry; on: boolean; reading?: Reading | null; onToggle: () => void; children: React.ReactNode;
+function Row({ g, first, on, reading, expanded, onExpand, onToggle, children }: {
+  g: GuideEntry; first: boolean; on: boolean; reading?: Reading | null;
+  expanded: boolean; onExpand: () => void; onToggle: () => void; children: React.ReactNode;
 }) {
   const tone = TONE[reading?.tone || 'neutral'];
   return (
-    <div style={{ background: '#0b1226', border: `1px solid ${on ? '#334155' : '#1f2a44'}`, borderRadius: 14, padding: 12, color: '#e5e7eb' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ borderTop: first ? 'none' : '1px solid #1f2a44', color: '#e5e7eb', background: expanded ? '#0e1630' : 'transparent' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px' }}>
         <Toggle on={on} onClick={onToggle} label={g.name} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: 14 }}>{g.name}</span>
-            <span style={{ fontSize: 11, color: '#64748b' }}>{g.technical}</span>
+        <button onClick={onExpand} aria-expanded={expanded} style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none',
+          padding: 0, color: 'inherit', cursor: 'pointer', textAlign: 'left',
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: 'nowrap' }}>{g.name}</span>
+              <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.technical}</span>
+            </div>
+            {on && reading && (
+              <div style={{ fontSize: 12, fontWeight: 700, color: tone.color, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {reading.headline}
+              </div>
+            )}
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 4, opacity: on ? 1 : 0.35 }}>
-          {swatches(g.key).map((s, i) => <Swatch key={i} color={s.color} dashed={s.dashed} />)}
-        </div>
+          <span style={{ display: 'flex', gap: 3, opacity: on ? 1 : 0.35 }}>
+            {swatches(g.key).map((s, i) => <Swatch key={i} color={s.color} dashed={s.dashed} bar={s.bar} />)}
+          </span>
+          <span style={{ color: '#64748b', fontSize: 10, transform: `rotate(${expanded ? 90 : 0}deg)`, transition: 'transform .15s' }}>▶</span>
+        </button>
       </div>
 
-      <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 8, lineHeight: 1.45 }}>{g.what}</div>
-
-      {on && reading && (
-        <div style={{ marginTop: 10, background: tone.bg, borderRadius: 10, padding: '8px 10px' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: '#64748b' }}>Right now</div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: tone.color, marginTop: 2 }}>{reading.headline}</div>
-          {reading.detail && <div style={{ fontSize: 12.5, color: '#cbd5e1', marginTop: 3, lineHeight: 1.45 }}>{reading.detail}</div>}
+      {expanded && (
+        <div style={{ padding: '0 12px 12px 56px', fontSize: 12.5, lineHeight: 1.5 }}>
+          <div style={{ color: '#94a3b8' }}>{g.what}</div>
+          {on && reading?.detail && (
+            <div style={{ marginTop: 8, background: tone.bg, borderRadius: 8, padding: '6px 8px', color: '#cbd5e1' }}>
+              <b style={{ color: tone.color }}>Right now:</b> {reading.detail}
+            </div>
+          )}
+          <ul style={{ margin: '8px 0 0', paddingLeft: 16, color: '#cbd5e1' }}>
+            {g.howToRead.map(t => <li key={t}>{t}</li>)}
+          </ul>
+          {children}
         </div>
       )}
-
-      <details style={{ marginTop: 8 }}>
-        <summary style={{ cursor: 'pointer', fontSize: 12, color: '#60a5fa', fontWeight: 700 }}>How to read it</summary>
-        <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.5 }}>
-          {g.howToRead.map(t => <li key={t}>{t}</li>)}
-        </ul>
-        {children}
-      </details>
     </div>
   );
 }

@@ -160,11 +160,11 @@ export const GUIDE: GuideEntry[] = [
 ];
 
 /** Colour swatches shown next to each indicator, matching what's drawn on the chart. */
-export function swatches(key: IndicatorKey): { color: string; dashed?: boolean; label?: string }[] {
+export function swatches(key: IndicatorKey): { color: string; dashed?: boolean; bar?: boolean; label?: string }[] {
   switch (key) {
     case 'TREND': return [{ color: COLORS.trendFast, label: 'short' }, { color: COLORS.trendSlow, label: 'long' }];
     case 'RANGE': return [{ color: COLORS.range, dashed: true }];
-    case 'VOLUME': return [{ color: COLORS.up }, { color: COLORS.down }];
+    case 'VOLUME': return [{ color: COLORS.up, bar: true }, { color: COLORS.down, bar: true }];
     case 'MOMENTUM': return [{ color: COLORS.momentum }];
     case 'VWAP': return [{ color: COLORS.vwap }];
     case 'MACD': return [{ color: COLORS.macd }, { color: COLORS.macdSignal }];

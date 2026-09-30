@@ -237,7 +237,7 @@ export default function ProChart({
   const bar = bars[idx];
   const prevBar = bars[idx - 1];
   const barChange = bar && prevBar ? ((bar.c - prevBar.c) / prevBar.c) * 100 : null;
-  const readout: { color: string; label: string; value: string; dashed?: boolean }[] = [];
+  const readout: { color: string; label: string; value: string; dashed?: boolean; bar?: boolean }[] = [];
   if (computed && bar) {
     const v = (l: Line) => (l[idx] === null || l[idx] === undefined ? '—' : fmtPrice(l[idx] as number));
     if (enabled.TREND) {
@@ -246,7 +246,7 @@ export default function ProChart({
     }
     if (enabled.RANGE) readout.push({ color: COLORS.range, label: 'Normal range', value: `${v(computed.rangeLower)} – ${v(computed.rangeUpper)}`, dashed: true });
     if (enabled.VWAP) readout.push({ color: COLORS.vwap, label: 'Avg price paid', value: v(computed.vwap) });
-    if (enabled.VOLUME) readout.push({ color: COLORS.volumeUp, label: 'Shares traded', value: fmtVol(bar.v) });
+    if (enabled.VOLUME) readout.push({ color: COLORS.up, label: 'Shares traded', value: fmtVol(bar.v), bar: true });
   }
 
   const activeTool = TOOLS.find(t => t.id === tool);
@@ -287,7 +287,7 @@ export default function ProChart({
               )}
               {readout.map(r => (
                 <span key={r.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
-                  <Swatch color={r.color} dashed={r.dashed} />
+                  <Swatch color={r.color} dashed={r.dashed} bar={r.bar} />
                   {r.label} <b style={{ color: '#e2e8f0' }}>{r.value}</b>
                 </span>
               ))}
@@ -452,7 +452,9 @@ function SubPane({
 
 /* ---------------- small UI bits ---------------- */
 
-export function Swatch({ color, dashed = false }: { color: string; dashed?: boolean }) {
+export function Swatch({ color, dashed = false, bar = false }: { color: string; dashed?: boolean; bar?: boolean }) {
+  // bar: a small vertical block, matching histogram series like volume
+  if (bar) return <span style={{ width: 4, height: 12, borderRadius: 1, flexShrink: 0, display: 'inline-block', background: color }} />;
   return (
     <span style={{
       width: 16, height: 3, borderRadius: 2, flexShrink: 0, display: 'inline-block',
