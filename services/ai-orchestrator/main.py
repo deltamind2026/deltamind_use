@@ -106,7 +106,7 @@ Afterwards, write:
 
 Keep explanations easy to understand and 2-3 sentences. Avoid jargon."""
 
-        explanation = get_completion(prompt, max_tokens=1000)
+        explanation = get_completion(prompt, max_tokens=2000)
 
         return {"explanation": explanation}
 
