@@ -22,7 +22,13 @@ TRADIER_TOKEN=...                          # equity options chains (optional)
 AI_ORCHESTRATOR_URL=http://localhost:8002  # required for AI features
 ```
 
-The AI orchestrator reads `OPENAI_API_KEY` from the environment and won't start without it. Set it in the terminal before you start the orchestrator (see step 2).
+Create `services/ai-orchestrator/.env`:
+
+```
+OPENAI_API_KEY=sk-...                      # required, the orchestrator won't start without it
+```
+
+Both `.env` files are gitignored.
 
 ### 2. Run (3 terminals)
 
@@ -43,7 +49,6 @@ cd services/ai-orchestrator
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-$env:OPENAI_API_KEY="sk-..."      # macOS/Linux: export OPENAI_API_KEY=sk-...
 uvicorn main:app --reload --port 8002
 ```
 
