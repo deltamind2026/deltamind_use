@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { loadHoldings, addHolding, removeHolding, formatCurrency, formatPercent } from '@/lib/portfolio';
 import type { Holding } from '@/lib/portfolio';
+import InfoTooltip from '@/components/InfoTooltip';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8040';
 const STARTING_CASH = 10000;
@@ -360,15 +361,24 @@ export default function PortfolioPage() {
           {holdings.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <div style={card}>
-                <div style={cardLabel}>TOTAL VALUE</div>
+                <div style={cardLabel}>
+                  TOTAL VALUE
+                  <InfoTooltip text="The combined current market value of all stocks in your portfolio." />
+                </div>
                 <div style={cardValue}>{formatCurrency(totalValue)}</div>
               </div>
               <div style={card}>
-                <div style={cardLabel}>TOTAL COST</div>
+                <div style={cardLabel}>
+                  TOTAL COST
+                  <InfoTooltip text="The total amount you originally paid to purchase the stocks in your portfolio." />
+                </div>
                 <div style={cardValue}>{formatCurrency(totalCost)}</div>
               </div>
               <div style={card}>
-                <div style={cardLabel}>TOTAL GAIN/LOSS</div>
+                <div style={cardLabel}>
+                  TOTAL GAIN/LOSS
+                  <InfoTooltip text="The difference between the current value of your holdings and their original purchase cost." />
+                </div>
                 <div style={{ ...cardValue, color: totalGain >= 0 ? '#22c55e' : '#ef4444' }}>
                   {formatCurrency(totalGain)} ({formatPercent(totalGainPct)})
                 </div>
@@ -379,7 +389,10 @@ export default function PortfolioPage() {
           {/* Allocation bar */}
           {allocationData.length > 0 && (
             <div style={card}>
-              <div style={cardLabel}>ALLOCATION</div>
+              <div style={cardLabel}>
+                ALLOCATION
+                <InfoTooltip text="How your portfolio's total value is divided among the different stocks you own." />
+              </div>
               <div style={{ display: 'flex', height: 20, borderRadius: 6, overflow: 'hidden', margin: '10px 0 12px' }}>
                 {allocationData.map(d => (
                   <div key={d.symbol} style={{ width: `${d.pct}%`, background: d.color }} title={`${d.symbol}: ${d.pct.toFixed(1)}%`} />
@@ -438,12 +451,32 @@ export default function PortfolioPage() {
                     {[
                       { label: 'SYMBOL', key: 'symbol' },
                       { label: 'SHARES', key: 'shares' },
-                      { label: 'BUY PRICE', key: 'buyPrice' },
+                      { 
+                        label: 'BUY PRICE', 
+                        key: 'buyPrice',
+                        tooltip: 'The original price paid per share when you purchased this stock.' 
+                      },
                       { label: 'CURRENT', key: 'currentPrice' },
-                      { label: 'TOTAL COST', key: 'totalCost' },
-                      { label: 'TOTAL VALUE', key: 'totalValue' },
-                      { label: 'GAIN/LOSS', key: 'gainDollar' },
-                      { label: '%', key: 'gainPct' },
+                      { 
+                        label: 'TOTAL COST', 
+                        key: 'totalCost', 
+                        tooltip: 'The total amount originally paid for this holding.'
+                      },
+                      { 
+                        label: 'TOTAL VALUE', 
+                        key: 'totalValue', 
+                        tooltip: 'The current market value of this holding, calculated by multiplying the number of shared by the current stock price.'
+                      },
+                      { 
+                        label: 'GAIN/LOSS', 
+                        key: 'gainDollar', 
+                        tooltip: 'The dollar amount gained or lost based on the difference between the current value and original cost.'
+                      },
+                      { 
+                        label: '%', 
+                        key: 'gainPct',
+                        tooltip: 'The percentage gained or lost relative to the original purchase cost.'
+                      },
                       { label: '', key: '' },
                     ].map(col => (
                       <th
@@ -452,6 +485,11 @@ export default function PortfolioPage() {
                         style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, cursor: col.key ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}
                       >
                         {col.label}
+
+                        {'tooltip' in col && col.tooltip && (
+                          <InfoTooltip text={col.tooltip} />
+                        )}
+
                         {hSort.key === col.key && <span style={{ marginLeft: 4 }}>{hSort.dir === 'asc' ? '↑' : '↓'}</span>}
                       </th>
                     ))}
@@ -501,19 +539,31 @@ export default function PortfolioPage() {
           {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             <div style={card}>
-              <div style={cardLabel}>CASH BALANCE</div>
+              <div style={cardLabel}>
+                CASH BALANCE
+                <InfoTooltip text="The amount of virtual money available to buy stocks." />
+              </div>
               <div style={cardValue}>{formatCurrency(cash)}</div>
             </div>
             <div style={card}>
-              <div style={cardLabel}>POSITIONS VALUE</div>
+              <div style={cardLabel}>
+                POSITIONS VALUE
+                <InfoTooltip text="The combined current market value of all stocks you own in your simulated account." />
+              </div>
               <div style={cardValue}>{formatCurrency(paperTotalValue)}</div>
             </div>
             <div style={card}>
-              <div style={cardLabel}>TOTAL PORTFOLIO</div>
+              <div style={cardLabel}>
+                TOTAL PORTFOLIO
+                <InfoTooltip text="The total value of your simulated account, including available cash and the current value of your stocks." />
+              </div>
               <div style={cardValue}>{formatCurrency(portfolioTotal)}</div>
             </div>
             <div style={card}>
-              <div style={cardLabel}>UNREALIZED P&L</div>
+              <div style={cardLabel}>
+                UNREALIZED P&L
+                <InfoTooltip text="Unrealized Profit and Loss: How much your currently owned stocks have gained or lost compared to what you paid for them. These gains or losses are not realized until you sell." />
+              </div>
               <div style={{ ...cardValue, color: paperTotalGain >= 0 ? '#22c55e' : '#ef4444' }}>
                 {formatCurrency(paperTotalGain)} ({formatPercent(paperTotalGainPct)})
               </div>
@@ -584,11 +634,27 @@ export default function PortfolioPage() {
                       {[
                         { label: 'SYMBOL', key: 'symbol' },
                         { label: 'SHARES', key: 'shares' },
-                        { label: 'AVG COST', key: 'avgCost' },
+                        { 
+                          label: 'AVG COST', 
+                          key: 'avgCost',
+                          tooltip: 'The average price paid per share of this stock across all your purchases.'
+                        },
                         { label: 'CURRENT', key: 'currentPrice' },
-                        { label: 'MARKET VALUE', key: 'marketValue' },
-                        { label: 'UNREALIZED P&L', key: 'gainDollar' },
-                        { label: '%', key: 'gainPct' },
+                        { 
+                          label: 'MARKET VALUE', 
+                          key: 'marketValue', 
+                          tooltip: 'The current value of this position, calculated by multiplying the number of shares by the current stock price.'
+                        },
+                        { 
+                          label: 'UNREALIZED P&L', 
+                          key: 'gainDollar',
+                          tooltip: 'The profit or loss on this position based on its current market value compared to its purchase cost. It is unrealized because you have not sold the shares yet.'
+                        },
+                        { 
+                          label: '%', 
+                          key: 'gainPct',
+                          tooltip: 'The percentage gained or lost on this position relative to its original purchase cost.'
+                        },
                         { label: '', key: '' },
                       ].map(col => (
                         <th
@@ -597,6 +663,11 @@ export default function PortfolioPage() {
                           style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, cursor: col.key ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}
                         >
                           {col.label}
+
+                          {'tooltip' in col && col.tooltip && (
+                            <InfoTooltip text={col.tooltip} />
+                          )}
+
                           {pSort.key === col.key && <span style={{ marginLeft: 4 }}>{pSort.dir === 'asc' ? '↑' : '↓'}</span>}
                         </th>
                       ))}
