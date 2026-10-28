@@ -11,11 +11,6 @@ const features = [
     title: 'Portfolio & Paper Trading',
     description: 'Track your real holdings with live prices and P&L, or practice buying and selling stocks with $10,000 in fake money — no risk required.',
   },
-  {
-    href: '/dashboard/options',
-    title: 'Options Chain',
-    description: 'Explore live options contracts for any stock. View calls and puts with strike prices, expiration dates, and real market data.',
-  },
 ];
 
 export default function Home() {
@@ -30,7 +25,7 @@ export default function Home() {
       </div>
 
       {/* Feature cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
         {features.map(f => (
           <Link key={f.href} href={f.href} style={{ textDecoration: 'none' }}>
             <div style={{

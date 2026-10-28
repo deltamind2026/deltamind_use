@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 const links = [
   { href: '/dashboard/canvas', label: 'Canvas' },
   { href: '/dashboard/portfolio', label: 'Portfolio' },
-  { href: '/dashboard/options', label: 'Options Chain' },
 ];
 
 export default function NavBar() {
