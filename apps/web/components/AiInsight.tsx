@@ -94,6 +94,7 @@ const EVAL_FALLBACK = { border: '#475569', background: 'rgba(71,85,105,0.18)', a
 
 export default function AiInsight({ symbol, tf, candles, marketState }: { symbol: string; tf: string; candles: any[]; marketState: any }) {
   const [state, setState] = useState<{ loading: boolean; data: AiExplanation | null }>({ loading: true, data: null });
+  const [waking, setWaking] = useState(false);
 
   useEffect(() => {
     if (!candles.length) return;
@@ -110,19 +111,30 @@ export default function AiInsight({ symbol, tf, candles, marketState }: { symbol
           fetch(`${API_URL}/options/chain?symbol=${encodeURIComponent(symbol)}`, { signal }).then(r => r.json()).catch(() => ({})),
         ]);
         if (cancelled) return;
-        const ai = await fetch(`${API_URL}/ai/explain`, {
-          signal,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            asset: symbol,
-            timeframe: tf,
-            candles,
-            market_state: marketState,
-            multi_timeframe: multi.combined || {},
-            options: options.rows || [],
-          }),
-        }).then(r => r.json());
+        // The AI service can be asleep on first use. The server answers 502/503 while
+        // it starts, so retry a few times instead of showing an error straight away.
+        let ai: any = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const res = await fetch(`${API_URL}/ai/explain`, {
+            signal,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              asset: symbol,
+              timeframe: tf,
+              candles,
+              market_state: marketState,
+              multi_timeframe: multi.combined || {},
+              options: options.rows || [],
+            }),
+          }).catch(() => null);
+          if (cancelled) return;
+          if (res && res.ok) { ai = await res.json(); break; }
+          setWaking(true);
+          await new Promise(r => setTimeout(r, 4000));
+          if (cancelled) return;
+        }
+        setWaking(false);
         if (!cancelled) setState({ loading: false, data: parseAiExplanation(ai?.explanation) });
       } catch (err) {
         if (cancelled) return;
@@ -142,7 +154,7 @@ export default function AiInsight({ symbol, tf, candles, marketState }: { symbol
         <div style={{ fontSize: 12, color: '#64748b' }}>AI summary · not financial advice</div>
       </div>
 
-      {state.loading && <div style={{ marginTop: 10, color: '#94a3b8', fontSize: 14 }}>Reading the chart…</div>}
+      {state.loading && <div style={{ marginTop: 10, color: '#94a3b8', fontSize: 14 }}>{waking ? 'Waking up the AI, this can take up to a minute…' : 'Reading the chart…'}</div>}
 
       {d && (d.current || d.future || d.risks) && (
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>

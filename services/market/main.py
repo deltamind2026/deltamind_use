@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 import httpx
 from dotenv import load_dotenv
 import asyncio
+import os
 from typing import Dict, List, Tuple
 from cache import get_cached_data, set_cached_data
 
@@ -208,58 +209,63 @@ async def options_chain(symbol: str, provider: str = "tradier"):
         "warning": data.get("warning"),
     }
 
+async def _wake_orchestrator(client: httpx.AsyncClient, ai_url: str, max_wait: float = 55.0) -> bool:
+    """Render free services sleep when idle. Poll the health route until the
+    AI service answers, so the first user request does not fail while it starts."""
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + max_wait
+    while True:
+        try:
+            r = await client.get(f"{ai_url}/ai/hello", timeout=10.0)
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(3)
+
+
+async def _post_to_orchestrator(path: str, payload: dict, timeout: float = 60.0):
+    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
+    if not ai_url:
+        raise HTTPException(status_code=500, detail="AI_ORCHESTRATOR_URL not configured")
+    ai_url = ai_url.rstrip("/")
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        if not await _wake_orchestrator(client, ai_url):
+            # 503 tells the website the service is still starting, so it retries.
+            raise HTTPException(status_code=503, detail="AI service is starting up. Please try again in a moment.")
+        try:
+            response = await client.post(f"{ai_url}{path}", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+
+
+@app.get("/ai/warmup")
+async def ai_warmup():
+    """Called when the site loads so a sleeping AI service starts early."""
+    ai_url = (os.getenv("AI_ORCHESTRATOR_URL") or "").rstrip("/")
+    if ai_url:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.get(f"{ai_url}/ai/hello")
+        except Exception:
+            pass  # the request itself is what wakes the service
+    return {"ok": True}
+
+
 @app.post("/ai/explain")
 async def ai_explain_endpoint(request: dict):
-    import os
-    import httpx
-    
-    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
-    #ai_url = "http://localhost:8002"
-    
-    if not ai_url:
-        raise HTTPException(
-            status_code=500,
-            detail="AI_ORCHESTRATOR_URL not configured"
-        )
-    
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{ai_url}/ai/explain",
-                json=request
-            )
-            return response.json()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI service error: {str(e)}"
-        )
-    
+    return await _post_to_orchestrator("/ai/explain", request)
+
+
 @app.post("/ai/analyze-period")
 async def ai_analyze_period(request: dict):
-    import os
-    import httpx
-    
-    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
-    
-    if not ai_url:
-        raise HTTPException(
-            status_code=500,
-            detail="AI_ORCHESTRATOR_URL not configured"
-        )
-    
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{ai_url}/ai/analyze-period",
-                json=request
-            )
-            return response.json()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI service error: {str(e)}"
-        )
+    return await _post_to_orchestrator("/ai/analyze-period", request)
+
 
 @app.post("/ai/hover")
 async def ai_hover_endpoint(request: dict):
