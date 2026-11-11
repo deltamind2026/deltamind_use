@@ -6,7 +6,7 @@ import {
 } from 'lightweight-charts';
 import type { OHLCV } from '../lib/ta/series';
 import type { ChartType, IndicatorSettings } from '../lib/ta/settings';
-import { COLORS, avgLabel, fmtPrice, unit, type Computed, type Line } from '../lib/ta/guide';
+import { COLORS, avgLabel, barContext, fmtPrice, unit, type Computed, type Line } from '../lib/ta/guide';
 import { API_URL } from '../lib/useChartData';
 import DrawingOverlay, { type Tool } from './DrawingOverlay';
 import ExplainerCard, { type Explanation } from './ExplainerCard';
@@ -33,10 +33,12 @@ function toLine(values: Line, bars: OHLCV[]) {
   return bars.map((b, i) => (values[i] === null ? { time: b.t as UTCTimestamp } : { time: b.t as UTCTimestamp, value: values[i] as number }));
 }
 
+// Bar times are Eastern wall-clock times stored as UTC (see useChartData), so they
+// are read back as UTC, and intraday ones are labelled ET.
 const fmtDate = (t: number, tf: string) =>
-  new Date(t * 1000).toLocaleString(undefined, tf === '1D'
-    ? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
-    : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  tf === '1D'
+    ? new Date(t * 1000).toLocaleString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    : `${new Date(t * 1000).toLocaleString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET`;
 
 const fmtVol = (v: number) => (v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${v}`);
 
@@ -50,14 +52,14 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
 /* ------------------------------------------------ */
 
 export default function ProChart({
-  symbol, tf, bars, computed, settings, marketState, onChartType,
+  symbol, tf, bars, candles, computed, settings, onChartType,
 }: {
   symbol: string;
   tf: string;
   bars: OHLCV[];
+  candles: any[];   // the same bars as the API sent them (one per entry in `bars`), for the AI endpoints
   computed: Computed | null;
   settings: IndicatorSettings;
-  marketState: any;
   onChartType: (t: ChartType) => void;
 }) {
   const priceRef = useRef<HTMLDivElement>(null);
@@ -180,18 +182,12 @@ export default function ProChart({
     const body = [
       `${symbol} opened at **${fmtPrice(b.o)}** and closed at **${fmtPrice(b.c)}**, ${change >= 0 ? 'up' : 'down'} **${Math.abs(change).toFixed(2)}%** from the ${u.one} before.`,
       `During this ${u.one} the price moved between ${fmtPrice(b.l)} and ${fmtPrice(b.h)}. ${volLine}`,
-    ].join('\n\n');
+      // What made this candle notable. Worked out from the chart itself, so there's nothing to wait for.
+      barContext(bars, i, tf).join(' '),
+    ].filter(Boolean).join('\n\n');
 
-    const seq = ++explainSeq.current;
-    setExplanation({ kind: 'day', title: fmtDate(b.t, tf), body, aiLoading: true });
-    fetch(`${API_URL}/ai/hover`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candle: { open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v }, market_state: marketState }),
-    })
-      .then(r => r.json())
-      .then(res => { if (seq === explainSeq.current) setExplanation(e => e && { ...e, aiLoading: false, aiText: res?.text || '' }); })
-      .catch(() => { if (seq === explainSeq.current) setExplanation(e => e && { ...e, aiLoading: false, aiText: '' }); });
+    explainSeq.current++;
+    setExplanation({ kind: 'day', title: fmtDate(b.t, tf), body });
   }
 
   const explainBarRef = useRef(explainBar);
@@ -211,20 +207,12 @@ export default function ProChart({
 
     const seq = ++explainSeq.current;
     setExplanation({ kind: 'period', title: `${fmtDate(start.t, tf)} → ${fmtDate(end.t, tf)}`, body, aiLoading: true });
-    const iso = (t: number) => new Date(t * 1000).toISOString();
+    // Send the whole chart and say which bars were picked, so the explanation can
+    // compare this stretch with the rest of the chart and with what came next.
     fetch(`${API_URL}/ai/analyze-period`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        symbol,
-        start_date: new Date(start.t * 1000).toLocaleDateString(),
-        end_date: new Date(end.t * 1000).toLocaleDateString(),
-        start_price: start.c,
-        end_price: end.c,
-        price_change_pct: change,
-        candles: win.map(b => ({ time: iso(b.t), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v })),
-        market_state: marketState,
-      }),
+      body: JSON.stringify({ symbol, timeframe: tf, candles, start: i0, end: i1 }),
     })
       .then(r => r.json())
       .then(d => { if (seq === explainSeq.current) setExplanation(e => e && { ...e, aiLoading: false, aiText: d?.analysis || '' }); })

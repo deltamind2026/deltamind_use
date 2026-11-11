@@ -356,11 +356,11 @@ function CanvasPageInner(){
             bars={data.bars}
             computed={computed}
             settings={clean}
-            marketState={data.marketState}
+            candles={data.candles}
             onChartType={(chartType: ChartType) => updateSettings({ ...settings, chartType })}
           />
           {data.status === 'ready' && (
-            <AiInsight symbol={symbol} tf={tf} candles={data.candles} marketState={data.marketState} />
+            <AiInsight symbol={symbol} tf={tf} snapshot={data.snapshot} />
           )}
         </div>
         <IndicatorPanel settings={settings} onChange={updateSettings} readings={readings} tf={tf} />
