@@ -8,10 +8,27 @@ export type ChartData = {
   status: 'loading' | 'ready' | 'error';
   bars: OHLCV[];
   candles: any[];     // raw API candles, forwarded to the AI endpoints
-  marketState: any;
+  snapshot: any;      // plain-language facts from the market service, see AiInsight
 };
 
-const EMPTY: ChartData = { status: 'loading', bars: [], candles: [], marketState: {} };
+// The market's clock. Bar times arrive in UTC; the chart, the cards and the AI
+// text all show them in US Eastern so they agree with each other wherever the
+// reader is. The chart library draws whatever "UTC" time it is given, so each
+// bar is stored as its Eastern wall-clock time written as if it were UTC.
+const EASTERN = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', hourCycle: 'h23',
+  year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+});
+
+export function easternTime(utc: string): number {
+  // API times have no zone marker; without one the browser would read them as local time.
+  const at = new Date(/Z$|[+-]\d\d:\d\d$/.test(utc) ? utc : `${utc}Z`);
+  const p: Record<string, number> = {};
+  for (const part of EASTERN.formatToParts(at)) p[part.type] = Number(part.value);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) / 1000;
+}
+
+const EMPTY: ChartData = { status: 'loading', bars: [], candles: [], snapshot: null };
 
 type Loaded = ChartData & { key: string };
 
@@ -27,10 +44,10 @@ export function useChartData(symbol: string, tf: string): ChartData {
         if (cancelled) return;
         const candles = ohlc.candles || [];
         const bars: OHLCV[] = candles.map((c: any) => ({
-          t: Math.floor(new Date(c.time).getTime() / 1000),
+          t: easternTime(c.time),
           o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume,
         }));
-        setData({ status: 'ready', bars, candles, marketState: ohlc.market_state || {}, key });
+        setData({ status: 'ready', bars, candles, snapshot: ohlc.snapshot || null, key });
       })
       .catch(() => { if (!cancelled) setData({ ...EMPTY, status: 'error', key }); });
     return () => { cancelled = true; };

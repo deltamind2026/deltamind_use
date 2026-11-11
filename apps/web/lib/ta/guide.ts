@@ -252,6 +252,64 @@ export function readIndicator(key: IndicatorKey, bars: OHLCV[], c: Computed, s: 
   }
 }
 
+/**
+ * What made one candle notable, judged against the rest of the chart: how big
+ * the move was for this stock, where it opened and finished, whether it set a
+ * record, and what the price has done since. Plain facts worked out right here,
+ * so they appear instantly. Sentences may use **bold**.
+ */
+export function barContext(bars: OHLCV[], i: number, tf: string): string[] {
+  const b = bars[i];
+  const prev = bars[i - 1];
+  if (!b || !prev) return [];
+  const u = unit(tf);
+  const out: string[] = [];
+
+  const changes = bars.slice(1).map((x, k) => pct(x.c, bars[k].c));
+  const usual = changes.reduce((sum, c) => sum + Math.abs(c), 0) / changes.length;
+  const change = changes[i - 1];
+  const times = usual > 0 ? Math.abs(change) / usual : 0;
+  const word = change >= 0 ? 'rise' : 'drop';
+
+  if (times >= 2 && (change === Math.max(...changes) || change === Math.min(...changes))) {
+    out.push(`This was the **biggest ${word} in one ${u.one}** on this chart, about ${times.toFixed(1)}× its usual move.`);
+  } else if (times >= 2.5) {
+    out.push(`That is a **big ${word}** for this stock: about ${times.toFixed(1)}× what it usually moves in one ${u.one}.`);
+  } else if (usual > 0 && times <= 0.3) {
+    out.push(`A quiet ${u.one}: it moved far less than its usual ${usual.toFixed(1)}%.`);
+  }
+
+  // Daily only: on intraday charts the first bar of each day always opens away from the last one.
+  const gap = pct(b.o, prev.c);
+  if (tf === '1D' && Math.abs(gap) >= 1.5 * usual) {
+    out.push(`It opened ${fmtPct(gap)} ${gap >= 0 ? 'above' : 'below'} where it closed the day before.`);
+  }
+
+  const spread = b.h - b.l;
+  if (spread > 0 && (spread / prev.c) * 100 >= usual) {
+    const at = (b.c - b.l) / spread;
+    if (at >= 0.85) out.push(`It finished near the highest price of the ${u.one}.`);
+    else if (at <= 0.15) out.push(`It finished near the lowest price of the ${u.one}.`);
+  }
+
+  // How far back you'd have to go to find a close this high (or this low).
+  for (const kind of ['highest', 'lowest'] as const) {
+    let back = 1;
+    while (i - back >= 0 && (kind === 'highest' ? bars[i - back].c < b.c : bars[i - back].c > b.c)) back++;
+    if (i - back < 0 && i >= 20) out.push(`This was the **${kind} close** on this chart up to that point.`);
+    else if (back > 20) out.push(`This was the **${kind} close** in ${back - 1} ${u.many} at that point.`);
+  }
+
+  const last = bars[bars.length - 1];
+  if (i < bars.length - 1) {
+    const since = pct(last.c, b.c);
+    out.push(Math.abs(since) < 0.1
+      ? `The price now is about where it closed then (${fmtPrice(last.c)}).`
+      : `Since then the price has ${since >= 0 ? 'risen' : 'fallen'} **${fmtPct(since)}**, to ${fmtPrice(last.c)}.`);
+  }
+  return out;
+}
+
 /** One-sentence summary of where the stock is on this chart. */
 export function summarize(bars: OHLCV[], tf: string) {
   if (bars.length < 2) return null;

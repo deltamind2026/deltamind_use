@@ -1,148 +1,36 @@
-DeltaMind Market State Engine
+# Chart facts
 
-DeltaMind does not rely on indicators alone.
-It converts raw price data into behavioral market states.
+DeltaMind's written explanations never come straight from an AI looking at a chart.
+The numbers are measured here first, and the AI only puts them into words:
 
-The AI does NOT predict price — it explains market conditions.
+```
+candles → facts (this folder) → AI service words them → website
+```
 
-How the system works
-candles → metrics → market_state → AI explanation
+That split is what keeps the text honest. The website shows the same numbers the
+AI was given, and the AI service rejects any reply containing a price or
+percentage that isn't in the facts.
 
+## What's here
 
-The math determines facts.
-The AI communicates them clearly.
+**`snapshot.py`** — the facts behind "DeltaMind's take" under the chart. Sent with
+every `/market/ohlc` response as `snapshot`.
 
-Metrics Explained
-Regime
+- The four tiles: direction, price swings, where the price sits in the chart's
+  range, and the nearest floor and ceiling.
+- The story (`snapshot.story`): the big moves that led to the current price, with
+  dates; whether this is the highest or lowest close in a while; single bars that
+  moved far more than usual; streaks.
 
-Determines the overall environment:
+**`period.py`** — the facts about a stretch of the chart the reader dragged across
+("Explain a period"): the shape of the move, how unusual it was for this stock,
+and what came before and after.
 
-trend: directional market
+## Ground rules
 
-range: balanced market
-
-compression: breakout likely
-
-chop: unreliable market
-
-Volatility
-
-Measures energy in price movement:
-
-compressed → expansion likely
-
-expanded → exhaustion risk
-
-Structure
-
-Tracks directional control:
-
-higher highs → buyers dominate
-
-lower lows → sellers dominate
-
-inside → indecision
-
-Liquidity Sweep
-
-Detects false breakouts:
-
-bull trap → downward risk
-
-bear trap → upward risk
-
-Rarity Score
-
-Statistical unusualness of the move:
-
-high rarity → abnormal event
-
-Volume Profile
-
-Identifies fair value (POC):
-Price tends to gravitate toward high-participation levels.
-
-AI Role
-
-The AI does NOT generate signals.
-
-It explains:
-
-what just happened
-
-why it matters
-
-what would invalidate it
-
-Example output:
-
-The market attempted to move higher but failed to hold above prior value, indicating trapped buyers. Volatility is expanding, suggesting continuation risk unless VWAP is reclaimed.
-
-
-Imagine the market is a playground and traders are kids playing tug-of-war.
-
-🧠 Regime — “What game are kids playing?”
-Value	Meaning
-trend	one team is winning and pulling hard
-range	both teams equal strength
-compression	everyone tired → big pull coming
-chop	chaos, kids running everywhere
-🌪 Volatility — “How wild is the playground?”
-State	Meaning
-compressed	quiet… big move coming
-normal	normal play
-expanded	screaming & running — move tiring out
-🧱 Structure — “Are they stepping forward or backward?”
-Structure	Meaning
-higher high	buyers winning
-lower low	sellers winning
-inside bar	nobody committed
-transition	fight changing direction
-🪤 Liquidity Sweep — “Did someone fall for a trick?”
-Event	Meaning
-bull trap	buyers tricked → price falls
-bear trap	sellers tricked → price rises
-none	fair fight
-
-This is extremely powerful — it explains fake breakouts.
-
-📊 Rarity Score — “Is today weird?”
-Score	Meaning
-low	normal day
-medium	interesting day
-high	unusual event
-
-Markets repeat behavior. Rare days matter.
-
-📏 Volume Profile (POC)
-
-“Where did most kids stand?”
-That’s the fair price.
-
-Price likes to return there.
-
-🎯 Combined Meaning
-
-AI now says:
-
-Kids tried to run forward but slipped. Now everyone is running backward faster.
-
-Instead of:
-
-RSI = 42
-
-4) How all metrics work together
-
-The engine answers a sequence:
-
-Environment → trade or wait?
-
-Event → trap or breakout?
-
-Participation → strong or weak move?
-
-Context → normal or rare?
-
-Risk → where invalid?
-
-AI converts that into human language.
+- Everything is measured against the stock's own behavior on the chart, not fixed
+  thresholds, so the same rules work for a calm ETF and a wild stock, daily or 15m.
+- Facts only. Nothing here predicts, scores or recommends.
+- On intraday charts, thin extended-hours bars don't count when measuring price
+  swings or looking for turning points.
+- Dates and times are US Eastern.

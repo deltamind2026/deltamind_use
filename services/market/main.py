@@ -20,8 +20,8 @@ from adapters.tradier import fetch_chain as tradier_chain
 from adapters.polygon import fetch_ohlc as polygon_ohlc
 
 # ---------------- Intelligence ----------------
-from metrics.market_state import build_market_state
-from metrics.multi_timeframe import combine_timeframes
+from metrics.snapshot import build_snapshot
+from metrics.period import build_period
 
 
 # ---------------------------------------------------
@@ -39,6 +39,11 @@ app.add_middleware(
 )
 
 VALID_TF = {"5m", "15m", "1h", "4h", "1d", "1w"}
+
+# "The overall market" that every stock is compared against: the S&P 500, through
+# the fund that tracks it. One chart per timeframe, shared by every stock.
+BENCHMARK = "SPY"
+CHART_BARS = 220  # how many candles a chart loads
 
 
 # ---------------------------------------------------
@@ -74,14 +79,58 @@ async def safe_polygon(symbol: str, tf: str, limit: int) -> Tuple[List[Dict], st
         return mock_payload.get("points", []), f"mock_polygon_error({str(e)[:40]})"
 
 
-def safe_market_state(candles: List[Dict]) -> Dict:
-    """Metrics engine must never crash UI"""
+def safe_snapshot(candles: List[Dict], tf: str, market: List[Dict] = None) -> Dict:
     try:
-        if not candles:
-            return {"error": "no_data"}
-        return build_market_state(candles)
+        return build_snapshot(candles, tf, market)
     except Exception as e:
-        return {"error": f"market_state_failed: {str(e)}"}
+        return {"error": f"snapshot_failed: {str(e)}"}
+
+
+async def load_chart(symbol: str, tf: str, limit: int) -> Dict:
+    """Candles plus snapshot for one stock, from the cache when it's fresh."""
+    # `limit` is part of the key: the "Add stock" check asks for a single candle,
+    # and that one-candle answer must not be served back as the stock's whole chart.
+    cache_tf = f"{tf}:{limit}"
+    cached = get_cached_data(symbol, cache_tf)
+    if cached:
+        cached['cache_hit'] = True
+        return cached
+
+    # A full chart also loads the market to compare against. Small requests
+    # (price lookups, the "Add stock" check) don't need it.
+    compare = symbol != BENCHMARK and limit >= 30
+    (raw, provider), market = await asyncio.gather(
+        safe_polygon(symbol, tf, limit),
+        market_candles(tf) if compare else asyncio.sleep(0),
+    )
+    candles = normalize_candles(raw)
+    live = provider == "polygon"
+
+    # Never set made-up prices against the real market.
+    snapshot = safe_snapshot(candles, tf, market if live else None)
+    # Made-up prices (no API key, or the data provider turned us away). The
+    # website says so next to the summary instead of presenting them as real.
+    snapshot["sample_data"] = not live
+
+    chart = {
+        "symbol": symbol,
+        "timeframe": tf,
+        "provider": provider,
+        "candles": candles,
+        "snapshot": snapshot,
+        "cache_hit": False
+    }
+    # Only real data is worth keeping. Caching the fallback would pin fake
+    # prices to this stock for 15 minutes after one failed request.
+    if live:
+        set_cached_data(symbol, cache_tf, chart)
+    return chart
+
+
+async def market_candles(tf: str):
+    """The benchmark's candles on this timeframe, or None if only made-up data is available."""
+    chart = await load_chart(BENCHMARK, tf, CHART_BARS)
+    return chart["candles"] if chart["provider"] == "polygon" else None
 
 
 # ---------------------------------------------------
@@ -94,70 +143,19 @@ def health():
 
 
 # ---------------------------------------------------
-# OHLC + Market State
+# OHLC + Snapshot
 # ---------------------------------------------------
 
 @app.get("/market/ohlc")
-async def ohlc(symbol: str, tf: str = "1d", limit: int = 220):
-    cached = get_cached_data(symbol, tf)
-    if cached:
-        cached['cache_hit'] = True
-        return JSONResponse(cached, headers={"Cache-Control": "public, max-age=900"})
-    
+async def ohlc(symbol: str, tf: str = "1d", limit: int = CHART_BARS):
+    symbol = symbol.upper()
     tf = tf.lower()
     if tf not in VALID_TF:
         raise HTTPException(status_code=400, detail=f"Invalid timeframe {tf}")
-    
-    raw, provider = await safe_polygon(symbol, tf, limit)
-    candles = normalize_candles(raw)
-    market_state = safe_market_state(candles)
-    
-    response_data = {
-        "symbol": symbol.upper(),
-        "timeframe": tf,
-        "provider": provider,
-        "candles": candles,
-        "market_state": market_state,
-        "cache_hit": False
-    }
-    
-    set_cached_data(symbol, tf, response_data)
-    
-    return JSONResponse(response_data, headers={"Cache-Control": "public, max-age=900"})
 
-# ---------------------------------------------------
-# Multi-Timeframe Intelligence
-# ---------------------------------------------------
-
-@app.get("/market/multi")
-async def multi_timeframe(symbol: str):
-
-    timeframes = ["5m", "1h", "1d", "1w"]
-    results = {}
-
-    async def fetch_tf(tf: str):
-        raw, provider = await safe_polygon(symbol, tf, 220)
-        candles = normalize_candles(raw)
-        state = safe_market_state(candles)
-        return tf, state
-
-    completed = await asyncio.gather(*(fetch_tf(tf) for tf in timeframes))
-
-    for tf, state in completed:
-        results[tf] = state
-
-    # combine higher-level intelligence
-    try:
-        combined = combine_timeframes(results)
-    except Exception as e:
-        combined = {"error": f"combine_failed: {str(e)}"}
-
-    return {
-        "symbol": symbol.upper(),
-        "timeframes": results,
-        "combined": combined
-    }
-
+    chart = await load_chart(symbol, tf, limit)
+    live = chart["provider"] == "polygon"
+    return JSONResponse(chart, headers={"Cache-Control": "public, max-age=900" if live else "no-store"})
 
 # ---------------------------------------------------
 # Options Chain
@@ -264,34 +262,29 @@ async def ai_explain_endpoint(request: dict):
 
 @app.post("/ai/analyze-period")
 async def ai_analyze_period(request: dict):
-    return await _post_to_orchestrator("/ai/analyze-period", request)
-
-
-@app.post("/ai/hover")
-async def ai_hover_endpoint(request: dict):
-    """
-    Provide real-time hover analysis for individual candles.
-    """
-    import os
-    import httpx
-    
-    ai_url = os.getenv("AI_ORCHESTRATOR_URL")
-    
-    if not ai_url:
-        raise HTTPException(
-            status_code=500,
-            detail="AI_ORCHESTRATOR_URL not configured"
-        )
-    
+    """The website sends the chart it is showing and which bars were selected.
+    The facts about that stretch are measured here; the AI service words them."""
+    sent = request.get("candles") or []
+    candles = normalize_candles(sent)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{ai_url}/ai/hover",
-                json=request
-            )
-            return response.json()
+        if len(candles) != len(sent):
+            raise ValueError("unreadable candles")  # positions would no longer line up
+        symbol = str(request.get("symbol", "")).upper()
+        tf = str(request.get("timeframe", "1d")).lower()
+
+        # Compare with the market only if these are the real candles we served
+        # for this chart (made-up data is never cached, so it never matches).
+        market = None
+        ours = get_cached_data(symbol, f"{tf}:{CHART_BARS}")
+        if symbol != BENCHMARK and ours and ours["candles"][-1]["time"] == candles[-1]["time"]:
+            market = await market_candles(tf)
+
+        period = build_period(candles, tf, int(request["start"]), int(request["end"]), market)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI service error: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Bad period request: {str(e)}")
+    if "error" in period:
+        raise HTTPException(status_code=400, detail=period["error"])
+
+    return await _post_to_orchestrator(
+        "/ai/analyze-period", {"asset": request.get("symbol", "this stock"), "period": period}
+    )
