@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import IndicatorPanel from '@/components/IndicatorPanel';
 import ProChart from '@/components/ProChart';
 import AiInsight from '@/components/AiInsight';
+import AiChat from '@/components/AiChat';
 import type { ChartType, IndicatorKey, IndicatorSettings } from '@/lib/ta/settings';
 import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from '@/lib/ta/settings';
 import { GUIDE, computeIndicators, fmtPrice, readIndicator, summarize } from '@/lib/ta/guide';
@@ -360,7 +361,10 @@ function CanvasPageInner(){
             onChartType={(chartType: ChartType) => updateSettings({ ...settings, chartType })}
           />
           {data.status === 'ready' && (
-            <AiInsight symbol={symbol} tf={tf} snapshot={data.snapshot} />
+            <>
+              <AiInsight symbol={symbol} tf={tf} snapshot={data.snapshot} />
+              <AiChat symbol={symbol} tf={tf} snapshot={data.snapshot} />
+            </>
           )}
         </div>
         <IndicatorPanel settings={settings} onChange={updateSettings} readings={readings} tf={tf} />

@@ -7,6 +7,7 @@ import httpx
 from dotenv import load_dotenv
 import asyncio
 import os
+from urllib.parse import urlparse
 from typing import Dict, List, Tuple
 from cache import get_cached_data, set_cached_data
 
@@ -207,20 +208,23 @@ async def options_chain(symbol: str, provider: str = "tradier"):
         "warning": data.get("warning"),
     }
 
-async def _wake_orchestrator(client: httpx.AsyncClient, ai_url: str, max_wait: float = 55.0) -> bool:
+async def _wake_orchestrator(client: httpx.AsyncClient, ai_url: str, max_wait: float = 55.0) -> str:
     """Render free services sleep when idle. Poll the health route until the
-    AI service answers, so the first user request does not fail while it starts."""
+    AI service answers, so the first user request does not fail while it starts.
+    Returns "" once it is awake, otherwise a short reason it could not be reached."""
     loop = asyncio.get_event_loop()
     deadline = loop.time() + max_wait
+    reason = "no answer"
     while True:
         try:
             r = await client.get(f"{ai_url}/ai/hello", timeout=10.0)
             if r.status_code == 200:
-                return True
-        except Exception:
-            pass
+                return ""
+            reason = f"/ai/hello answered {r.status_code}"
+        except Exception as e:
+            reason = f"{type(e).__name__} while contacting the AI service"
         if loop.time() >= deadline:
-            return False
+            return reason
         await asyncio.sleep(3)
 
 
@@ -231,9 +235,15 @@ async def _post_to_orchestrator(path: str, payload: dict, timeout: float = 60.0)
     ai_url = ai_url.rstrip("/")
 
     async with httpx.AsyncClient(timeout=timeout) as client:
-        if not await _wake_orchestrator(client, ai_url):
+        why = await _wake_orchestrator(client, ai_url)
+        if why:
+            host = urlparse(ai_url).netloc or ai_url
+            print(f"AI service not reachable at {host}: {why}", flush=True)
             # 503 tells the website the service is still starting, so it retries.
-            raise HTTPException(status_code=503, detail="AI service is starting up. Please try again in a moment.")
+            raise HTTPException(
+                status_code=503,
+                detail=f"AI service is starting up. Please try again in a moment. ({host}: {why})",
+            )
         try:
             response = await client.post(f"{ai_url}{path}", json=payload)
             response.raise_for_status()
@@ -258,6 +268,12 @@ async def ai_warmup():
 @app.post("/ai/explain")
 async def ai_explain_endpoint(request: dict):
     return await _post_to_orchestrator("/ai/explain", request)
+
+
+@app.post("/ai/chat")
+async def ai_chat_endpoint(request: dict):
+    """Beginner Q&A chat. Forwarded to the AI service, which wakes it first if it is asleep."""
+    return await _post_to_orchestrator("/ai/chat", request)
 
 
 @app.post("/ai/analyze-period")
